@@ -8,6 +8,7 @@ let targetPoint = null;
 let lastCandidates = [];
 let loadingTimer = null;
 let loadingTick = 0;
+let isPlotUpdating = false;
 
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
@@ -129,12 +130,21 @@ function renderPlot() {
     Plotly.newPlot("plot", buildTraces(), layout, config);
     plotEl = document.getElementById("plot");
     plotEl.on("plotly_click", (data) => {
+      if (isPlotUpdating) return;
       const idx = data?.points?.[0]?.pointNumber;
       const curve = data?.points?.[0]?.curveNumber;
       if (curve !== 0 || idx == null) return;
       selectedPointIndex = idx;
       selected = points[idx];
-      Plotly.react(plotEl, buildTraces(), buildLayout(), config);
+      isPlotUpdating = true;
+      // Delay redraw to next frame so click event finishes first.
+      requestAnimationFrame(() => {
+        Plotly.react(plotEl, buildTraces(), buildLayout(), config)
+          .catch(() => {})
+          .finally(() => {
+            isPlotUpdating = false;
+          });
+      });
       renderSelectedSampleInfo(selected).catch((e) => {
         document.getElementById("sampleInfo").innerHTML = `
           <div><span class="badge">${selected.name}</span></div>
@@ -145,7 +155,13 @@ function renderPlot() {
       });
     });
   } else {
-    Plotly.react(plotEl, buildTraces(), buildLayout(), config);
+    if (isPlotUpdating) return;
+    isPlotUpdating = true;
+    Plotly.react(plotEl, buildTraces(), buildLayout(), config)
+      .catch(() => {})
+      .finally(() => {
+        isPlotUpdating = false;
+      });
   }
 }
 
