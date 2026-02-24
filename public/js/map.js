@@ -80,6 +80,7 @@ function buildMapLayout() {
 
 async function renderMap(inputPoints) {
   const seq = ++mapRenderSeq;
+  const baseHover = inputPoints.map((p) => String(`${p.name} | X:${p.x} Y:${p.y} Z:${p.z}`));
   const base = {
     type: "scatter3d",
     mode: "markers",
@@ -87,7 +88,8 @@ async function renderMap(inputPoints) {
     y: inputPoints.map((p) => p.y),
     z: inputPoints.map((p) => p.z),
     text: inputPoints.map((p) => p.name),
-    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
+    hovertext: baseHover,
+    hoverinfo: "text",
     marker: { size: 4, opacity: 0.9, color: "#111111", line: { color: "#000000", width: 1 } },
   };
   const target = {
@@ -97,6 +99,8 @@ async function renderMap(inputPoints) {
     y: [],
     z: [],
     text: [],
+    hovertext: [],
+    hoverinfo: "text",
     textposition: "top center",
     marker: { size: 8, color: "#e10000", line: { color: "#8b0000", width: 1.5 }, symbol: "diamond" },
   };
@@ -107,18 +111,20 @@ async function renderMap(inputPoints) {
     y: [],
     z: [],
     text: [],
+    hovertext: [],
+    hoverinfo: "text",
     textposition: "top center",
     marker: { size: 8, color: "#1e5dff", line: { color: "#0b2c96", width: 1.5 } },
   };
 
   const traces = [base, target, selectedTrace];
   try {
-    await Plotly.react("plot", traces, buildMapLayout(), { responsive: true, doubleClick: false });
+    await Plotly.react("plot", traces, buildMapLayout(), { responsive: false, doubleClick: false });
   } catch (e) {
     // Fallback path: recover from Plotly internal broken state.
     try {
       Plotly.purge("plot");
-      await Plotly.newPlot("plot", traces, buildMapLayout(), { responsive: true, doubleClick: false });
+      await Plotly.newPlot("plot", traces, buildMapLayout(), { responsive: false, doubleClick: false });
     } catch (e2) {
       console.warn("plot render failed:", e2?.message || e2);
       return;
@@ -136,16 +142,6 @@ async function renderMap(inputPoints) {
     const curve = data?.points?.[0]?.curveNumber;
     if (curve !== BASE_TRACE_INDEX || idx == null) return;
     selected = points[idx];
-    Plotly.restyle(
-      plotEl,
-      {
-        x: [[selected.x]],
-        y: [[selected.y]],
-        z: [[selected.z]],
-        text: [[`Selected: ${selected.name}`]],
-      },
-      [SELECTED_TRACE_INDEX]
-    );
     await renderSelectedSampleInfo(selected);
   });
 }
@@ -162,6 +158,7 @@ function showTargetPoint(target) {
     y: [[target.y]],
     z: [[target.z]],
     text: [[`Target (${target.x}, ${target.y}, ${target.z})`]],
+    hovertext: [[String(`Target | X:${target.x} Y:${target.y} Z:${target.z}`)]],
   }, [TARGET_TRACE_INDEX]).catch((e) => {
     console.warn("target restyle failed:", e?.message || e);
   });
