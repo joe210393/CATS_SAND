@@ -16,6 +16,7 @@ let allMaterialNames = [];
 let allMaterials = [];
 let contribReqSeq = 0;
 let mapRenderSeq = 0;
+let lastSampleSurfaceData = null;
 
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
@@ -627,6 +628,7 @@ async function renderSampleRatioSurface() {
       strength: Number(document.getElementById("surfaceStrength").value || 0.35),
       p: Number(document.getElementById("surfaceP").value || 0.5),
     });
+    lastSampleSurfaceData = out;
     const pts = out.points || [];
     if (!pts.length) {
       status.textContent = out.message || "無資料";
@@ -653,6 +655,7 @@ async function renderSampleRatioSurface() {
         x: xs,
         y: ys,
         z: zs,
+        customdata: pts.map((_, idx) => idx),
         marker: { size: 3, color: "#222" },
         name: "不同配比點",
       },
@@ -663,6 +666,7 @@ async function renderSampleRatioSurface() {
         y: [base.y],
         z: [base.z],
         text: ["基準配比"],
+        customdata: [0],
         marker: { size: 7, color: "#d30000", symbol: "diamond" },
         name: "基準樣品",
       },
@@ -682,9 +686,105 @@ async function renderSampleRatioSurface() {
       },
       { responsive: true }
     );
+    const surfaceEl = document.getElementById("sampleSurfacePlot");
+    if (typeof surfaceEl.removeAllListeners === "function") {
+      surfaceEl.removeAllListeners("plotly_click");
+    }
+    surfaceEl.on("plotly_click", (evt) => {
+      const p0 = evt?.points?.[0];
+      if (!p0) return;
+      const dataIdx = Number(
+        Array.isArray(p0.customdata) ? p0.customdata[0] : p0.customdata ?? p0.pointNumber ?? 0
+      );
+      showSampleSurfacePointDetail(dataIdx);
+    });
+    showSampleSurfacePointDetail(0);
     status.textContent = `完成：共 ${pts.length} 個配比點`;
   } catch (e) {
     status.textContent = `失敗：${e.message}`;
+  }
+}
+
+function showSampleSurfacePointDetail(pointIndex) {
+  const infoEl = document.getElementById("sampleSurfacePointInfo");
+  const pts = lastSampleSurfaceData?.points || [];
+  const base = lastSampleSurfaceData?.base;
+  if (!pts.length || !base) {
+    infoEl.textContent = "（點選圖上的配比點可查看比例調整）";
+    return;
+  }
+  const idx = Math.max(0, Math.min(pts.length - 1, Number(pointIndex) || 0));
+  const picked = pts[idx];
+  const baseMap = new Map((base.bomItems || []).map((it) => [String(it.material), Number(it.ratioPercent)]));
+  const pickedMap = new Map((picked.bomItems || []).map((it) => [String(it.material), Number(it.ratioPercent)]));
+  const matNames = [...new Set([...baseMap.keys(), ...pickedMap.keys()])];
+  const rows = matNames
+    .map((m) => {
+      const b = baseMap.get(m) || 0;
+      const p = pickedMap.get(m) || 0;
+      const d = p - b;
+      const sign = d >= 0 ? "+" : "";
+      return `<tr>
+        <td style="padding:4px; border-bottom:1px solid #eee;">${m}</td>
+        <td style="padding:4px; text-align:right; border-bottom:1px solid #eee;">${b.toFixed(2)}%</td>
+        <td style="padding:4px; text-align:right; border-bottom:1px solid #eee;">${p.toFixed(2)}%</td>
+        <td style="padding:4px; text-align:right; border-bottom:1px solid #eee;">${sign}${d.toFixed(2)}%</td>
+      </tr>`;
+    })
+    .join("");
+  infoEl.innerHTML = `
+    <div><span class="badge">配比點 #${idx}</span> XYZ(${picked.xyz?.x}, ${picked.xyz?.y}, ${picked.xyz?.z})</div>
+    <div class="small">相對基準配方比例調整</div>
+    <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+      <thead>
+        <tr>
+          <th style="text-align:left; border-bottom:1px solid #222; padding:4px;">材料</th>
+          <th style="text-align:right; border-bottom:1px solid #222; padding:4px;">基準</th>
+          <th style="text-align:right; border-bottom:1px solid #222; padding:4px;">目前點位</th>
+          <th style="text-align:right; border-bottom:1px solid #222; padding:4px;">調整量</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function exportSampleSurfaceCsv() {
+  const pts = lastSampleSurfaceData?.points || [];
+  if (!pts.length) {
+    alert("請先生成樣品曲面/點雲，再下載配方 CSV。");
+    return;
+  }
+  const matNames = [...new Set(pts.flatMap((p) => (p.bomItems || []).map((b) => String(b.material))))];
+  const header = ["idx", "isBase", "x", "y", "z", ...matNames];
+  const rows = [header];
+  pts.forEach((p, idx) => {
+    const map = new Map((p.bomItems || []).map((b) => [String(b.material), Number(b.ratioPercent)]));
+    rows.push([
+      String(idx),
+      p.isBase ? "1" : "0",
+      String(p.xyz?.x ?? ""),
+      String(p.xyz?.y ?? ""),
+      String(p.xyz?.z ?? ""),
+      ...matNames.map((m) => (map.get(m) ?? 0).toFixed(4)),
+    ]);
+  });
+  const csv = rows.map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ratio_surface_${selectedBom?.sample?.id || "sample"}_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function toggleSampleSurfaceFullscreen() {
+  const el = document.getElementById("sampleSurfacePlot");
+  if (!document.fullscreenElement) {
+    await el.requestFullscreen();
+  } else if (document.fullscreenElement === el) {
+    await document.exitFullscreen();
   }
 }
 
@@ -809,6 +909,12 @@ async function main() {
     }
   });
   document.getElementById("btnRenderSampleSurface").addEventListener("click", renderSampleRatioSurface);
+  document.getElementById("btnDownloadSampleSurface").addEventListener("click", exportSampleSurfaceCsv);
+  document.getElementById("btnExpandSampleSurface").addEventListener("click", () => {
+    toggleSampleSurfaceFullscreen().catch((e) => {
+      document.getElementById("sampleSurfaceStatus").textContent = `放大失敗：${e.message}`;
+    });
+  });
 }
 
 main();

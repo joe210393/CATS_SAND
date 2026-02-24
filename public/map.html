@@ -87,9 +87,14 @@
             <input id="surfaceP" type="number" value="0.5" step="0.01" min="0" max="1" />
           </div>
         </div>
-        <button id="btnRenderSampleSurface">生成樣品曲面/點雲</button>
+        <div class="row">
+          <button id="btnRenderSampleSurface">生成樣品曲面/點雲</button>
+          <button id="btnExpandSampleSurface">放大圖表</button>
+          <button id="btnDownloadSampleSurface">下載配比點配方 CSV</button>
+        </div>
         <div id="sampleSurfaceStatus" class="small"></div>
         <div id="sampleSurfacePlot" style="height:280px;"></div>
+        <div id="sampleSurfacePointInfo" class="small">（點選圖上的配比點可查看比例調整）</div>
       </div>
 
       <div class="card">
