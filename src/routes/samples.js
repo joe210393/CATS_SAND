@@ -91,4 +91,25 @@ router.put(
 })
 );
 
+router.delete(
+  "/:id",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: "invalid id" });
+    await exec(`DELETE FROM samples WHERE id=?`, [id]);
+    res.json({ ok: true });
+  })
+);
+
+router.post(
+  "/batch-delete",
+  ah(async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => Number(x)).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ ok: false, error: "ids required" });
+    const placeholders = ids.map(() => "?").join(",");
+    await exec(`DELETE FROM samples WHERE id IN (${placeholders})`, ids);
+    res.json({ ok: true, deleted: ids.length });
+  })
+);
+
 export default router;

@@ -3,6 +3,10 @@ import { apiGet, apiPost } from "./api.js";
 let points = [];
 let selected = null;
 let plotEl = null;
+let selectedPointIndex = null;
+let lastCandidates = [];
+let loadingTimer = null;
+let loadingTick = 0;
 
 const BASE_TRACE_INDEX = 0;
 const TARGET_TRACE_INDEX = 1;
@@ -11,6 +15,10 @@ const INITIAL_CAMERA = {
   up: { x: 0, y: 0, z: 1 },
   center: { x: 0, y: 0, z: 0 },
 };
+
+function baseMarkerColors(inputPoints, selectedIdx = null) {
+  return inputPoints.map((_, idx) => (idx === selectedIdx ? "#1e5dff" : "#111111"));
+}
 
 function renderPlot(inputPoints) {
   const xs = inputPoints.map((p) => p.x);
@@ -29,7 +37,7 @@ function renderPlot(inputPoints) {
     marker: {
       size: 4,
       opacity: 0.9,
-      color: "#111111",
+      color: baseMarkerColors(inputPoints, selectedPointIndex),
       line: { color: "#000000", width: 1 },
     },
   };
@@ -103,13 +111,57 @@ function renderPlot(inputPoints) {
     if (data?.points?.[0]?.curveNumber !== BASE_TRACE_INDEX) return;
     const idx = data?.points?.[0]?.pointNumber;
     if (idx == null) return;
+    selectedPointIndex = idx;
     selected = inputPoints[idx];
-    document.getElementById("sampleInfo").innerHTML = `<div><span class="badge">${selected.name}</span></div>
-       <div>X 除臭：${selected.x}</div>
-       <div>Y 吸水：${selected.y}</div>
-       <div>Z 抗粉碎：${selected.z}（低=更碎）</div>
-       <div class="small">（BOM 會在 V1.1 加入：點選後拉 /api/boms/by-sample）</div>`;
+    Plotly.restyle(plotEl, { "marker.color": [baseMarkerColors(inputPoints, selectedPointIndex)] }, [BASE_TRACE_INDEX]);
+    renderSelectedSampleInfo(selected).catch((e) => {
+      document.getElementById("sampleInfo").innerHTML = `
+        <div><span class="badge">${selected.name}</span></div>
+        <div>X 除臭：${selected.x}</div>
+        <div>Y 吸水：${selected.y}</div>
+        <div>Z 抗粉碎：${selected.z}（低=更碎）</div>
+        <div class="small">BOM 載入失敗：${e.message}</div>`;
+    });
   });
+}
+
+async function renderSelectedSampleInfo(sample) {
+  const boms = await apiGet(`/api/boms/by-sample/${sample.id}`);
+  const activeBom = (boms || []).find((b) => Number(b.is_active) === 1) || boms?.[0];
+  let bomHtml = `<div class="small">此樣品尚無 BOM</div>`;
+  if (activeBom?.id) {
+    const items = await apiGet(`/api/boms/${activeBom.id}/items`);
+    bomHtml = items?.length
+      ? `<div class="small">BOM ${activeBom.version}${Number(activeBom.is_active) === 1 ? " (active)" : ""}</div>
+         <table style="width:100%; border-collapse:collapse; margin-top:6px;">
+           <thead>
+             <tr>
+               <th style="text-align:left; border-bottom:1px solid #2a2a2a; padding:4px;">材料</th>
+               <th style="text-align:right; border-bottom:1px solid #2a2a2a; padding:4px;">比例(%)</th>
+             </tr>
+           </thead>
+           <tbody>
+             ${items
+               .map(
+                 (it) => `<tr>
+                   <td style="padding:4px; border-bottom:1px solid #efefef;">${it.material}</td>
+                   <td style="padding:4px; text-align:right; border-bottom:1px solid #efefef;">${it.ratio}</td>
+                 </tr>`
+               )
+               .join("")}
+           </tbody>
+         </table>`
+      : `<div class="small">BOM ${activeBom.version} 尚無材料項目</div>`;
+  }
+
+  document.getElementById("sampleInfo").innerHTML = `
+    <div><span class="badge">${sample.name}</span></div>
+    <div>X 除臭：${sample.x}</div>
+    <div>Y 吸水：${sample.y}</div>
+    <div>Z 抗粉碎：${sample.z}（低=更碎）</div>
+    <hr />
+    ${bomHtml}
+  `;
 }
 
 function showTargetPoint(target) {
@@ -131,10 +183,17 @@ function resetView() {
   Plotly.relayout(plotEl, { "scene.camera": INITIAL_CAMERA });
 }
 
+function clearCandidates() {
+  const el = document.getElementById("candidates");
+  el.innerHTML = `<div class="small">（等待新候選配方）</div>`;
+  lastCandidates = [];
+}
+
 function renderCandidates(out) {
   const el = document.getElementById("candidates");
   el.innerHTML = "";
   const { candidates = [] } = out;
+  lastCandidates = candidates;
 
   for (const c of candidates) {
     const mixHtml = (c.mix || []).map((m) => `${m.sample} × ${(m.weight * 100).toFixed(0)}%`).join("<br>");
@@ -167,14 +226,77 @@ function renderCandidates(out) {
   }
 }
 
+function exportCandidatesCsv() {
+  if (!lastCandidates.length) {
+    alert("目前沒有候選配方可匯出，請先產生候選配方。");
+    return;
+  }
+  const rows = [["idx", "mix", "expected_x", "expected_y", "expected_z", "bom", "reasons", "warnings"]];
+  lastCandidates.forEach((c, idx) => {
+    const mix = (c.mix || []).map((m) => `${m.sample}*${(m.weight * 100).toFixed(2)}%`).join(" | ");
+    const bom = (c.bom || []).map((b) => `${b.material}:${b.ratio}%`).join(" | ");
+    const reasons = (c.reasons || []).join(" / ");
+    const warnings = (c.warnings || []).join(" / ");
+    rows.push([
+      String(idx + 1),
+      mix,
+      String(c.expectedXYZ?.x ?? ""),
+      String(c.expectedXYZ?.y ?? ""),
+      String(c.expectedXYZ?.z ?? ""),
+      bom,
+      reasons,
+      warnings,
+    ]);
+  });
+
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `candidates_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function startLoadingStatus(statusEl) {
+  clearInterval(loadingTimer);
+  loadingTick = 0;
+  statusEl.textContent = "開始產生新配方…";
+  loadingTimer = setInterval(() => {
+    loadingTick += 1;
+    const dots = ".".repeat((loadingTick % 3) + 1);
+    const step = loadingTick % 4;
+    const text =
+      step === 0
+        ? `正在分析目標點${dots}`
+        : step === 1
+          ? `正在搜尋近鄰樣品${dots}`
+          : step === 2
+            ? `正在呼叫 LLM 產生候選${dots}`
+            : `正在整理候選 BOM${dots}`;
+    statusEl.textContent = text;
+  }, 700);
+}
+
+function stopLoadingStatus() {
+  clearInterval(loadingTimer);
+  loadingTimer = null;
+}
+
 async function main() {
   points = await apiGet("/api/map/points");
   renderPlot(points);
   document.getElementById("btnResetView").addEventListener("click", resetView);
+  document.getElementById("btnExportCandidates").addEventListener("click", exportCandidatesCsv);
 
   document.getElementById("btnReco").addEventListener("click", async () => {
     const status = document.getElementById("recoStatus");
-    status.textContent = "LLM 推理中…";
+    clearCandidates();
+    startLoadingStatus(status);
     try {
       const target = {
         x: Number(document.getElementById("tx").value),
@@ -186,9 +308,11 @@ async function main() {
       const maxMix = Number(document.getElementById("maxMix").value || 3);
 
       const out = await apiPost("/api/recommendations", { target, k, maxMix });
-      status.textContent = "完成";
+      stopLoadingStatus();
+      status.textContent = `完成：已產生 ${(out?.candidates || []).length} 組候選配方`;
       renderCandidates(out);
     } catch (e) {
+      stopLoadingStatus();
       status.textContent = "失敗：" + e.message;
     }
   });

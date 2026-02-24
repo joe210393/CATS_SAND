@@ -26,3 +26,10 @@ export async function apiPut(url, body) {
   if (!j.ok) throw new Error(j.error || "API error");
   return j.data;
 }
+
+export async function apiDelete(url) {
+  const r = await fetch(url, { method: "DELETE" });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "API error");
+  return j.data;
+}
