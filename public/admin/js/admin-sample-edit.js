@@ -27,9 +27,6 @@ document.getElementById("btnSave").onclick = async () => {
   const payload = {
     name: document.getElementById("name").value.trim(),
     status: document.getElementById("status").value,
-    x_deodor: Number(document.getElementById("x").value || 0),
-    y_absorb: Number(document.getElementById("y").value || 0),
-    z_crush: Number(document.getElementById("z").value || 0),
     tags: [],
     notes: document.getElementById("notes").value,
   };

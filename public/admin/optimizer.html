@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>後台 - 主次配方求解</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <div class="card">
+    <a href="/map.html">← 回地圖</a>
+    <h2>主次配方求解（V2）</h2>
+    <div class="row">
+      <div>
+        <label class="small">主材料（主體配方）</label>
+        <select id="mainMaterialId"></select>
+      </div>
+      <div>
+        <label class="small">主材料比例最小值（%）</label>
+        <input id="mainMin" type="number" value="50" />
+      </div>
+      <div>
+        <label class="small">主材料比例最大值（%）</label>
+        <input id="mainMax" type="number" value="80" />
+      </div>
+      <div>
+        <label class="small">步進（%）</label>
+        <input id="mainStep" type="number" value="5" />
+      </div>
+    </div>
+    <div class="row">
+      <div><label class="small">目標 X 除臭</label><input id="tx" type="number" value="80" /></div>
+      <div><label class="small">目標 Y 吸水</label><input id="ty" type="number" value="95" /></div>
+      <div><label class="small">目標 Z 抗粉碎</label><input id="tz" type="number" value="80" /></div>
+      <div><label class="small">最大材料數</label><input id="maxMaterials" type="number" value="6" /></div>
+    </div>
+    <div class="row">
+      <div><label class="small">製程參數 p（0~1）</label><input id="p" type="number" step="0.01" value="0.5" /></div>
+      <div><label class="small">回傳候選數 TopN</label><input id="topN" type="number" value="10" /></div>
+      <div><label class="small">排除材料 ID（逗號）</label><input id="excludeIds" placeholder="例如 2,8" /></div>
+    </div>
+    <button id="btnRun">產生候選配方</button>
+    <div id="msg" class="small"></div>
+  </div>
+  <div class="card">
+    <div class="small">候選配方清單（可存成新樣品草稿）</div>
+    <div id="results"></div>
+  </div>
+
+  <script type="module" src="/admin/js/admin-optimizer.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>後台 - 換主材補救</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <div class="card">
+    <a href="/map.html">← 回地圖</a>
+    <h2>換主材補救（Swap & Repair）</h2>
+    <div class="row">
+      <div>
+        <label class="small">基準樣品</label>
+        <select id="baseSampleId"></select>
+      </div>
+      <div>
+        <label class="small">主材替換：從（A）</label>
+        <select id="fromMainMaterialId"></select>
+      </div>
+      <div>
+        <label class="small">主材替換：到（B）</label>
+        <select id="toMainMaterialId"></select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label class="small">目標 X 除臭</label><input id="tx" type="number" value="80" /></div>
+      <div><label class="small">目標 Y 吸水</label><input id="ty" type="number" value="95" /></div>
+      <div><label class="small">目標 Z 抗粉碎</label><input id="tz" type="number" value="80" /></div>
+      <div><label class="small">TopN 補救配方</label><input id="topN" type="number" value="5" /></div>
+    </div>
+    <button id="btnRun">產生補救建議</button>
+    <div id="msg" class="small"></div>
+  </div>
+
+  <div class="card">
+    <div class="small">替換前後比較</div>
+    <div id="compare"></div>
+  </div>
+
+  <div class="card">
+    <div class="small">建議補強材料（Top5）</div>
+    <div id="suggestions"></div>
+  </div>
+
+  <div class="card">
+    <div class="small">補救候選配方</div>
+    <div id="repaired"></div>
+  </div>
+
+  <script type="module" src="/admin/js/admin-swap-repair.js"></script>
+</body>
+</html>

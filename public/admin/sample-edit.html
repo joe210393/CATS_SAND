@@ -27,18 +27,19 @@
 
     <div class="row">
       <div>
-        <label class="small">X 除臭</label>
-        <input id="x" type="number" step="1" />
+        <label class="small">X 除臭（系統計算，只讀）</label>
+        <input id="x" type="number" step="0.01" readonly />
       </div>
       <div>
-        <label class="small">Y 吸水</label>
-        <input id="y" type="number" step="1" />
+        <label class="small">Y 吸水（系統計算，只讀）</label>
+        <input id="y" type="number" step="0.01" readonly />
       </div>
       <div>
-        <label class="small">Z 抗粉碎/完整度（高=不碎）</label>
-        <input id="z" type="number" step="1" />
+        <label class="small">Z 抗粉碎/完整度（系統計算，只讀，高=不碎）</label>
+        <input id="z" type="number" step="0.01" readonly />
       </div>
     </div>
+    <div class="small">說明：V2 起 XYZ 不可手填，請到 BOM 頁編輯配方後自動更新。</div>
 
     <label class="small">備註</label>
     <textarea id="notes" rows="4"></textarea>

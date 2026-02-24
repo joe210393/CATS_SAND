@@ -8,6 +8,10 @@ import mapRouter from "./routes/map.js";
 import recommendationsRouter from "./routes/recommendations.js";
 import curvesRouter from "./routes/curves.js";
 import contributionsRouter from "./routes/contributions.js";
+import modelsRouter from "./routes/models.js";
+import evaluateRouter from "./routes/evaluate.js";
+import optimizeRouter from "./routes/optimize.js";
+import swapRepairRouter from "./routes/swap_repair.js";
 
 const app = express();
 
@@ -23,6 +27,10 @@ app.use("/api/map", mapRouter);
 app.use("/api/recommendations", recommendationsRouter);
 app.use("/api/curves", curvesRouter);
 app.use("/api/contributions", contributionsRouter);
+app.use("/api/models", modelsRouter);
+app.use("/api/evaluate", evaluateRouter);
+app.use("/api/optimize", optimizeRouter);
+app.use("/api/swap-repair", swapRepairRouter);
 
 app.use((err, _req, res, _next) => {
   console.error("Unhandled API error:", err);

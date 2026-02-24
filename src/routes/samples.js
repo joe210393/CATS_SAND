@@ -1,6 +1,7 @@
 import express from "express";
 import { exec, query } from "../db.js";
-import { mustNumber, safeJsonParse } from "../utils/validate.js";
+import { safeJsonParse } from "../utils/validate.js";
+import { evaluateBomItems, getActiveBomItemsBySampleId } from "../services/recipe_engine.js";
 
 const router = express.Router();
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -36,19 +37,16 @@ router.get(
 router.post(
   "/",
   ah(async (req, res) => {
-  const { name, x_deodor, y_absorb, z_crush, tags, status, notes } = req.body || {};
+  const { name, tags, status, notes } = req.body || {};
   if (!name) return res.status(400).json({ ok: false, error: "name required" });
 
-  const x = mustNumber(x_deodor ?? 0, "x_deodor");
-  const y = mustNumber(y_absorb ?? 0, "y_absorb");
-  const z = mustNumber(z_crush ?? 0, "z_crush");
   const tagsJson = JSON.stringify(Array.isArray(tags) ? tags : []);
   const st = ["draft", "tested", "archived"].includes(status) ? status : "draft";
 
   const { meta } = await exec(
     `INSERT INTO samples (name, x_deodor, y_absorb, z_crush, tags, status, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [name, x, y, z, tagsJson, st, notes || null]
+    [name, 0, 0, 0, tagsJson, st, notes || null]
   );
 
   res.json({ ok: true, id: meta.insertId });
@@ -111,24 +109,54 @@ router.get(
   })
 );
 
+router.get(
+  "/:id/active-bom-with-scores",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    const sRows = await query(`SELECT id, name, x_deodor, y_absorb, z_crush FROM samples WHERE id=?`, [id]);
+    if (!sRows.length) return res.status(404).json({ ok: false, error: "sample not found" });
+    const s = sRows[0];
+
+    const bomItems = await getActiveBomItemsBySampleId(id);
+    if (!bomItems.length) {
+      return res.json({
+        ok: true,
+        data: {
+          sample: { id: s.id, name: s.name },
+          bomItems: [],
+          metrics: {},
+          xyz: { x: Number(s.x_deodor), y: Number(s.y_absorb), z: Number(s.z_crush) },
+          message: "此樣品尚未設定 BOM",
+        },
+      });
+    }
+    const out = await evaluateBomItems(bomItems, 0.5);
+    res.json({
+      ok: true,
+      data: {
+        sample: { id: s.id, name: s.name },
+        bomItems: bomItems.map((it) => ({ material: it.material, ratioPercent: it.ratioPercent, material_id: it.material_id })),
+        metrics: out.metrics,
+        xyz: out.xyz,
+      },
+    });
+  })
+);
+
 router.put(
   "/:id",
   ah(async (req, res) => {
   const id = Number(req.params.id);
-  const { name, x_deodor, y_absorb, z_crush, tags, status, notes } = req.body || {};
-
-  const x = mustNumber(x_deodor ?? 0, "x_deodor");
-  const y = mustNumber(y_absorb ?? 0, "y_absorb");
-  const z = mustNumber(z_crush ?? 0, "z_crush");
+  const { name, tags, status, notes } = req.body || {};
 
   const tagsJson = JSON.stringify(Array.isArray(tags) ? tags : []);
   const st = ["draft", "tested", "archived"].includes(status) ? status : "draft";
 
   await exec(
     `UPDATE samples
-     SET name=?, x_deodor=?, y_absorb=?, z_crush=?, tags=?, status=?, notes=?
+     SET name=?, tags=?, status=?, notes=?
      WHERE id=?`,
-    [name, x, y, z, tagsJson, st, notes || null, id]
+    [name, tagsJson, st, notes || null, id]
   );
 
   res.json({ ok: true });

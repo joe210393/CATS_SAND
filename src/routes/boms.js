@@ -1,5 +1,6 @@
 import express from "express";
 import { exec, query } from "../db.js";
+import { refreshSampleXYZCache } from "../services/recipe_engine.js";
 
 const router = express.Router();
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -43,6 +44,7 @@ router.put("/:bomId/set-active", ah(async (req, res) => {
 
   await exec(`UPDATE boms SET is_active=0 WHERE sample_id=?`, [sampleId]);
   await exec(`UPDATE boms SET is_active=1 WHERE id=?`, [bomId]);
+  await refreshSampleXYZCache(sampleId, 0.5);
 
   res.json({ ok: true });
 }));
@@ -61,6 +63,11 @@ router.put("/:bomId/items", ah(async (req, res) => {
       Number(it.ratio || 0),
       it.note || null,
     ]);
+  }
+
+  const bomRows = await query(`SELECT sample_id FROM boms WHERE id=? LIMIT 1`, [bomId]);
+  if (bomRows.length) {
+    await refreshSampleXYZCache(Number(bomRows[0].sample_id), 0.5);
   }
 
   res.json({ ok: true });

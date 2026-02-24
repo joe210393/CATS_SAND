@@ -15,7 +15,10 @@
           <div>
             <div class="small">快速入口</div>
             <a href="/admin/samples.html">後台：樣品</a> ·
-            <a href="/admin/materials.html">後台：材料</a>
+            <a href="/admin/materials.html">後台：材料</a> ·
+            <a href="/admin/models.html">後台：公式編輯</a> ·
+            <a href="/admin/optimizer.html">後台：主次求解</a> ·
+            <a href="/admin/swap-repair.html">後台：換主材補救</a>
           </div>
           <div style="text-align:right">
             <div class="small">Z = z_crush（越高越不碎；越低越碎）</div>
@@ -28,22 +31,22 @@
 
     <div class="panel">
       <div class="card">
-        <div class="small">Target 目標點（手動輸入）</div>
+        <div class="small">Target 目標點（系統計算只讀）</div>
         <div class="row">
           <div>
             <label class="small">X 除臭</label>
-            <input id="tx" type="number" value="80" step="1" />
+            <input id="tx" type="number" value="0" step="1" readonly />
           </div>
           <div>
             <label class="small">Y 吸水</label>
-            <input id="ty" type="number" value="70" step="1" />
+            <input id="ty" type="number" value="0" step="1" readonly />
           </div>
           <div>
             <label class="small">Z 抗粉碎/完整度</label>
-            <input id="tz" type="number" value="75" step="1" />
+            <input id="tz" type="number" value="0" step="1" readonly />
           </div>
         </div>
-        <div class="small">提醒：Z 越高越不碎；越低越碎。</div>
+        <div class="small">提醒：XYZ 由 BOM 公式引擎自動計算，不能手填。</div>
         <hr />
         <div class="row">
           <div><input id="k" type="number" value="30" /></div>

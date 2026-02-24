@@ -7,6 +7,10 @@ Create DB:
 Import schema:
 - sql/schema.sql
 
+V2 migration (same DB, no new database):
+- sql/migration_v2.sql
+- Apply in MySQL Workbench (or mysql CLI) to the existing `catlitter_mvp` database.
+
 ## 2) Config
 Copy .env.example to .env and edit DB + LLM settings.
 
@@ -18,3 +22,6 @@ npm run dev
 - 3D Map: http://localhost:3000/map.html
 - Admin Samples: http://localhost:3000/admin/samples.html
 - Admin Materials: http://localhost:3000/admin/materials.html
+- Admin Models: http://localhost:3000/admin/models.html
+- Admin Optimizer: http://localhost:3000/admin/optimizer.html
+- Admin Swap Repair: http://localhost:3000/admin/swap-repair.html

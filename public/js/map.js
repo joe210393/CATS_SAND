@@ -23,8 +23,12 @@ const INITIAL_CAMERA = {
 const METRIC_LABEL = {
   deodor_rate: "除臭率",
   absorption: "吸水性",
+  coagulation: "凝結性",
+  clump_quality: "結團性質",
   dust_score: "低粉塵分數",
   clump_strength: "結團強度",
+  dissolve_score: "溶解/崩解性",
+  granule_strength: "顆粒強度",
   z_crush: "抗粉碎/完整度",
 };
 
@@ -157,22 +161,30 @@ function fillMaterialOptions(names) {
   if (merged.includes(prevScan)) scanSel.value = prevScan;
 }
 
-function sampleInfoHtml(sample, bomItems, message) {
+function sampleInfoHtml(sample, bomItems, message, metrics = null, xyz = null) {
   if (!bomItems?.length) {
     return `
       <div><span class="badge">${sample.name}</span></div>
-      <div>X 除臭：${sample.x}</div>
-      <div>Y 吸水：${sample.y}</div>
-      <div>Z 抗粉碎：${sample.z}（低=更碎）</div>
+      <div>X 除臭：${xyz?.x ?? sample.x ?? "-"}</div>
+      <div>Y 吸水：${xyz?.y ?? sample.y ?? "-"}</div>
+      <div>Z 抗粉碎：${xyz?.z ?? sample.z ?? "-"}（高=不碎）</div>
       <hr />
       <div class="small">${message || "此樣品尚未設定 BOM"}</div>`;
   }
 
+  const metricsHtml = metrics
+    ? `<hr />
+       <div class="small">8 指標（系統計算）</div>
+       ${Object.entries(METRIC_LABEL)
+         .map(([k, zh]) => `<div class="small">${zh}：${metrics[k] ?? "-"}（↑越好）</div>`)
+         .join("")}`
+    : "";
+
   return `
     <div><span class="badge">${sample.name}</span></div>
-    <div>X 除臭：${sample.x}</div>
-    <div>Y 吸水：${sample.y}</div>
-    <div>Z 抗粉碎：${sample.z}（低=更碎）</div>
+    <div>X 除臭：${xyz?.x ?? sample.x ?? "-"}</div>
+    <div>Y 吸水：${xyz?.y ?? sample.y ?? "-"}</div>
+    <div>Z 抗粉碎：${xyz?.z ?? sample.z ?? "-"}（高=不碎）</div>
     <hr />
     <table style="width:100%; border-collapse:collapse;">
       <thead>
@@ -191,17 +203,24 @@ function sampleInfoHtml(sample, bomItems, message) {
           )
           .join("")}
       </tbody>
-    </table>`;
+    </table>
+    ${metricsHtml}`;
 }
 
 async function renderSelectedSampleInfo(sample) {
   const infoEl = document.getElementById("sampleInfo");
   infoEl.innerHTML = `<div class="small">載入樣品資料中…</div>`;
   try {
-    const out = await apiGet(`/api/samples/${sample.id}/active-bom`);
+    const out = await apiGet(`/api/samples/${sample.id}/active-bom-with-scores`);
     selectedBom = out;
-    infoEl.innerHTML = sampleInfoHtml(out.sample, out.bomItems, out.message);
+    infoEl.innerHTML = sampleInfoHtml(out.sample, out.bomItems, out.message, out.metrics, out.xyz);
     fillMaterialOptions((out.bomItems || []).map((x) => x.material));
+    if (out.xyz) {
+      document.getElementById("tx").value = Number(out.xyz.x || 0).toFixed(2);
+      document.getElementById("ty").value = Number(out.xyz.y || 0).toFixed(2);
+      document.getElementById("tz").value = Number(out.xyz.z || 0).toFixed(2);
+      showTargetPoint(out.xyz);
+    }
     document.getElementById("curveStatus").textContent = out.bomItems?.length
       ? `已載入 ${out.sample.name} 的 BOM。baseline r0 會顯示在曲線圖上。`
       : "此樣品尚未設定 BOM";
