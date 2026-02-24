@@ -10,15 +10,12 @@ let loadingTick = 0;
 
 const BASE_TRACE_INDEX = 0;
 const TARGET_TRACE_INDEX = 1;
+const SELECTED_TRACE_INDEX = 2;
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
   up: { x: 0, y: 0, z: 1 },
   center: { x: 0, y: 0, z: 0 },
 };
-
-function baseMarkerColors(inputPoints, selectedIdx = null) {
-  return inputPoints.map((_, idx) => (idx === selectedIdx ? "#1e5dff" : "#111111"));
-}
 
 function renderPlot(inputPoints) {
   const xs = inputPoints.map((p) => p.x);
@@ -37,7 +34,7 @@ function renderPlot(inputPoints) {
     marker: {
       size: 4,
       opacity: 0.9,
-      color: baseMarkerColors(inputPoints, selectedPointIndex),
+      color: "#111111",
       line: { color: "#000000", width: 1 },
     },
   };
@@ -57,6 +54,24 @@ function renderPlot(inputPoints) {
       color: "#e10000",
       line: { color: "#8b0000", width: 1.5 },
       symbol: "diamond",
+    },
+  };
+
+  const selectedTrace = {
+    type: "scatter3d",
+    mode: "markers+text",
+    x: [],
+    y: [],
+    z: [],
+    text: [],
+    textposition: "top center",
+    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
+    marker: {
+      size: 7,
+      opacity: 1,
+      color: "#1e5dff",
+      line: { color: "#0b2c96", width: 1.5 },
+      symbol: "circle",
     },
   };
 
@@ -101,7 +116,7 @@ function renderPlot(inputPoints) {
     margin: { l: 0, r: 0, t: 0, b: 0 },
   };
 
-  Plotly.newPlot("plot", [trace, targetTrace], layout, {
+  Plotly.newPlot("plot", [trace, targetTrace, selectedTrace], layout, {
     responsive: true,
     doubleClick: false,
   });
@@ -113,7 +128,16 @@ function renderPlot(inputPoints) {
     if (idx == null) return;
     selectedPointIndex = idx;
     selected = inputPoints[idx];
-    Plotly.restyle(plotEl, { "marker.color": [baseMarkerColors(inputPoints, selectedPointIndex)] }, [BASE_TRACE_INDEX]);
+    Plotly.restyle(
+      plotEl,
+      {
+        x: [[selected.x]],
+        y: [[selected.y]],
+        z: [[selected.z]],
+        text: [[`Selected: ${selected.name}`]],
+      },
+      [SELECTED_TRACE_INDEX]
+    );
     renderSelectedSampleInfo(selected).catch((e) => {
       document.getElementById("sampleInfo").innerHTML = `
         <div><span class="badge">${selected.name}</span></div>
