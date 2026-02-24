@@ -1,21 +1,34 @@
 import { apiGet, apiPost } from "./api.js";
 
+const BASE_TRACE_INDEX = 0;
+const TARGET_TRACE_INDEX = 1;
+const SELECTED_TRACE_INDEX = 2;
+
 let points = [];
 let selected = null;
 let selectedBom = null;
 let plotEl = null;
 let lastCandidates = [];
+let lastCurve = null;
 let loadingTimer = null;
 let loadingTick = 0;
+let allMaterialNames = [];
 
-const TARGET_TRACE_INDEX = 1;
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
   up: { x: 0, y: 0, z: 1 },
   center: { x: 0, y: 0, z: 0 },
 };
 
-function buildLayout() {
+const METRIC_LABEL = {
+  deodor_rate: "除臭率",
+  absorption: "吸水性",
+  dust_score: "低粉塵分數",
+  clump_strength: "結團強度",
+  z_crush: "抗粉碎/完整度",
+};
+
+function buildMapLayout() {
   return {
     paper_bgcolor: "#ffffff",
     plot_bgcolor: "#ffffff",
@@ -53,13 +66,13 @@ function buildLayout() {
         backgroundcolor: "#ffffff",
       },
     },
-    uirevision: "stable-camera",
+    uirevision: "map-stable",
     margin: { l: 0, r: 0, t: 0, b: 0 },
   };
 }
 
-function renderPlot(inputPoints) {
-  const trace = {
+function renderMap(inputPoints) {
+  const base = {
     type: "scatter3d",
     mode: "markers",
     x: inputPoints.map((p) => p.x),
@@ -67,15 +80,9 @@ function renderPlot(inputPoints) {
     z: inputPoints.map((p) => p.z),
     text: inputPoints.map((p) => p.name),
     hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
-    marker: {
-      size: 4,
-      opacity: 0.9,
-      color: "#111111",
-      line: { color: "#000000", width: 1 },
-    },
+    marker: { size: 4, opacity: 0.9, color: "#111111", line: { color: "#000000", width: 1 } },
   };
-
-  const targetTrace = {
+  const target = {
     type: "scatter3d",
     mode: "markers+text",
     x: [],
@@ -83,17 +90,37 @@ function renderPlot(inputPoints) {
     z: [],
     text: [],
     textposition: "top center",
-    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
-    marker: { size: 8, opacity: 1, color: "#e10000", line: { color: "#8b0000", width: 1.5 }, symbol: "diamond" },
+    marker: { size: 8, color: "#e10000", line: { color: "#8b0000", width: 1.5 }, symbol: "diamond" },
+  };
+  const selectedTrace = {
+    type: "scatter3d",
+    mode: "markers+text",
+    x: [],
+    y: [],
+    z: [],
+    text: [],
+    textposition: "top center",
+    marker: { size: 8, color: "#1e5dff", line: { color: "#0b2c96", width: 1.5 } },
   };
 
-  Plotly.newPlot("plot", [trace, targetTrace], buildLayout(), { responsive: true, doubleClick: false });
+  Plotly.newPlot("plot", [base, target, selectedTrace], buildMapLayout(), { responsive: true, doubleClick: false });
   plotEl = document.getElementById("plot");
+
   plotEl.on("plotly_click", async (data) => {
-    const curve = data?.points?.[0]?.curveNumber;
     const idx = data?.points?.[0]?.pointNumber;
-    if (curve !== 0 || idx == null) return;
+    const curve = data?.points?.[0]?.curveNumber;
+    if (curve !== BASE_TRACE_INDEX || idx == null) return;
     selected = points[idx];
+    Plotly.restyle(
+      plotEl,
+      {
+        x: [[selected.x]],
+        y: [[selected.y]],
+        z: [[selected.z]],
+        text: [[`Selected: ${selected.name}`]],
+      },
+      [SELECTED_TRACE_INDEX]
+    );
     await renderSelectedSampleInfo(selected);
   });
 }
@@ -107,40 +134,39 @@ function showTargetPoint(target) {
   if (!plotEl) return;
   Plotly.restyle(
     plotEl,
-    { x: [[target.x]], y: [[target.y]], z: [[target.z]], text: [[`Target (${target.x},${target.y},${target.z})`]] },
+    {
+      x: [[target.x]],
+      y: [[target.y]],
+      z: [[target.z]],
+      text: [[`Target (${target.x}, ${target.y}, ${target.z})`]],
+    },
     [TARGET_TRACE_INDEX]
   );
 }
 
 function fillMaterialOptions(names) {
+  const merged = [...new Set([...(names || []), ...allMaterialNames].filter(Boolean))];
+  const html = merged.map((n) => `<option value="${n}">${n}</option>`).join("");
   const singleSel = document.getElementById("curveMaterial");
-  const mixSel = document.getElementById("curveScanMaterial");
-  const html = names.map((n) => `<option value="${n}">${n}</option>`).join("");
+  const scanSel = document.getElementById("curveScanMaterial");
+  const prevSingle = singleSel.value;
+  const prevScan = scanSel.value;
   singleSel.innerHTML = html;
-  mixSel.innerHTML = html;
+  scanSel.innerHTML = html;
+  if (merged.includes(prevSingle)) singleSel.value = prevSingle;
+  if (merged.includes(prevScan)) scanSel.value = prevScan;
 }
 
-function renderSampleInfoHtml(sample, bomItems, message) {
-  const bomTable = bomItems?.length
-    ? `<table style="width:100%; border-collapse:collapse; margin-top:6px;">
-         <thead>
-           <tr>
-             <th style="text-align:left; border-bottom:1px solid #2a2a2a; padding:4px;">材料</th>
-             <th style="text-align:right; border-bottom:1px solid #2a2a2a; padding:4px;">比例(%)</th>
-           </tr>
-         </thead>
-         <tbody>
-           ${bomItems
-             .map(
-               (it) => `<tr>
-                 <td style="padding:4px; border-bottom:1px solid #efefef;">${it.material}</td>
-                 <td style="padding:4px; text-align:right; border-bottom:1px solid #efefef;">${it.ratioPercent}</td>
-               </tr>`
-             )
-             .join("")}
-         </tbody>
-       </table>`
-    : `<div class="small">${message || "此樣品尚未設定 BOM"}</div>`;
+function sampleInfoHtml(sample, bomItems, message) {
+  if (!bomItems?.length) {
+    return `
+      <div><span class="badge">${sample.name}</span></div>
+      <div>X 除臭：${sample.x}</div>
+      <div>Y 吸水：${sample.y}</div>
+      <div>Z 抗粉碎：${sample.z}（低=更碎）</div>
+      <hr />
+      <div class="small">${message || "此樣品尚未設定 BOM"}</div>`;
+  }
 
   return `
     <div><span class="badge">${sample.name}</span></div>
@@ -148,8 +174,24 @@ function renderSampleInfoHtml(sample, bomItems, message) {
     <div>Y 吸水：${sample.y}</div>
     <div>Z 抗粉碎：${sample.z}（低=更碎）</div>
     <hr />
-    ${bomTable}
-  `;
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left; border-bottom:1px solid #2a2a2a; padding:4px;">材料</th>
+          <th style="text-align:right; border-bottom:1px solid #2a2a2a; padding:4px;">比例(%)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${bomItems
+          .map(
+            (it) => `<tr>
+              <td style="padding:4px; border-bottom:1px solid #efefef;">${it.material}</td>
+              <td style="padding:4px; text-align:right; border-bottom:1px solid #efefef;">${it.ratioPercent}</td>
+            </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>`;
 }
 
 async function renderSelectedSampleInfo(sample) {
@@ -158,12 +200,13 @@ async function renderSelectedSampleInfo(sample) {
   try {
     const out = await apiGet(`/api/samples/${sample.id}/active-bom`);
     selectedBom = out;
-    infoEl.innerHTML = renderSampleInfoHtml(out.sample, out.bomItems, out.message);
+    infoEl.innerHTML = sampleInfoHtml(out.sample, out.bomItems, out.message);
     fillMaterialOptions((out.bomItems || []).map((x) => x.material));
     document.getElementById("curveStatus").textContent = out.bomItems?.length
-      ? `已載入 ${out.sample.name} 的 BOM，請選擇模式並 Render`
+      ? `已載入 ${out.sample.name} 的 BOM。baseline r0 會顯示在曲線圖上。`
       : "此樣品尚未設定 BOM";
   } catch (e) {
+    selectedBom = null;
     infoEl.innerHTML = `<div class="small">樣品資料載入失敗：${e.message}</div>`;
   }
 }
@@ -207,7 +250,10 @@ function renderCandidates(out) {
 }
 
 function exportCandidatesCsv() {
-  if (!lastCandidates.length) return alert("目前沒有候選配方可匯出，請先產生候選配方。");
+  if (!lastCandidates.length) {
+    alert("目前沒有候選配方可匯出，請先產生候選配方。");
+    return;
+  }
   const rows = [["idx", "mix", "expected_x", "expected_y", "expected_z", "bom", "reasons", "warnings"]];
   lastCandidates.forEach((c, idx) => {
     rows.push([
@@ -221,7 +267,7 @@ function exportCandidatesCsv() {
       (c.warnings || []).join(" / "),
     ]);
   });
-  const csv = rows.map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -238,8 +284,16 @@ function startLoadingStatus(statusEl) {
   loadingTimer = setInterval(() => {
     loadingTick += 1;
     const dots = ".".repeat((loadingTick % 3) + 1);
-    const phase = ["正在分析目標點", "正在搜尋近鄰樣品", "正在呼叫 LLM 產生候選", "正在整理候選 BOM"][loadingTick % 4];
-    statusEl.textContent = `${phase}${dots}`;
+    const step = loadingTick % 4;
+    const text =
+      step === 0
+        ? `正在分析目標點${dots}`
+        : step === 1
+          ? `正在搜尋近鄰樣品${dots}`
+          : step === 2
+            ? `正在呼叫 LLM 產生候選${dots}`
+            : `正在整理候選 BOM${dots}`;
+    statusEl.textContent = text;
   }, 700);
 }
 
@@ -248,10 +302,69 @@ function stopLoadingStatus() {
   loadingTimer = null;
 }
 
+function activeScanRule() {
+  return document.querySelector("input[name='scanRule']:checked")?.value || "A";
+}
+
 function toggleCurveModeRows() {
   const mode = document.getElementById("curveMode").value;
   document.getElementById("singleRow").style.display = mode === "single" ? "flex" : "none";
   document.getElementById("mixRow").style.display = mode === "mix" ? "flex" : "none";
+}
+
+function updateContribSlider(rMax, steps, r0) {
+  const slider = document.getElementById("contribR");
+  const step = Math.max(0.001, rMax / Math.max(steps - 1, 1));
+  slider.min = "0";
+  slider.max = String(rMax);
+  slider.step = String(Number(step.toFixed(4)));
+  slider.value = String(Math.max(0, Math.min(rMax, r0 ?? 0)));
+  document.getElementById("contribRLabel").textContent = `r=${Number(slider.value).toFixed(4)}`;
+}
+
+async function renderContributions(rValue) {
+  const metric = document.getElementById("curveMetric").value;
+  const p = Number(document.getElementById("curveP").value || 0.5);
+  const scanMaterialName = document.getElementById("curveScanMaterial").value;
+  const rule = activeScanRule();
+  if (!selectedBom?.sample?.id) return;
+
+  try {
+    const out = await apiPost("/api/contributions", {
+      sampleId: selectedBom.sample.id,
+      metric,
+      scanMaterialName,
+      p,
+      rValue,
+      rule,
+    });
+    const parts = out.parts || [];
+    const topN = 8;
+    const top = parts.slice(0, topN);
+    const others = parts.slice(topN).reduce((t, x) => t + x.value, 0);
+    const labels = top.map((x) => x.material);
+    const values = top.map((x) => x.value);
+    if (others > 0) {
+      labels.push("Others");
+      values.push(Number(others.toFixed(2)));
+    }
+
+    Plotly.newPlot(
+      "contribPlot",
+      [{ type: "bar", x: labels, y: values, marker: { color: "#3f6df6" } }],
+      {
+        margin: { l: 40, r: 10, t: 30, b: 70 },
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+        xaxis: { tickangle: -25 },
+        yaxis: { title: "contribution" },
+        title: `材料貢獻拆解（${METRIC_LABEL[metric] || metric}）`,
+      },
+      { responsive: true }
+    );
+  } catch (e) {
+    document.getElementById("curveStatus").textContent = `貢獻拆解失敗：${e.message}`;
+  }
 }
 
 async function renderCurve() {
@@ -267,11 +380,14 @@ async function renderCurve() {
 
   const mode = document.getElementById("curveMode").value;
   const metric = document.getElementById("curveMetric").value;
+  const materialName = document.getElementById("curveMaterial").value;
+  const scanMaterialName = document.getElementById("curveScanMaterial").value;
   const p = Number(document.getElementById("curveP").value || 0.5);
   const rMax = Number(document.getElementById("curveRMax").value || 0.3);
   const steps = Number(document.getElementById("curveSteps").value || 31);
-  const materialName = document.getElementById("curveMaterial").value;
-  const scanMaterialName = document.getElementById("curveScanMaterial").value;
+  const rule = activeScanRule();
+  const showDelta = document.getElementById("chkDelta").checked;
+  const showXYZ = document.getElementById("chkXYZ").checked;
 
   status.textContent = "曲線計算中…";
   try {
@@ -284,59 +400,116 @@ async function renderCurve() {
       p,
       rMax,
       steps,
+      rule,
     });
+    lastCurve = out;
 
+    if (!out.x?.length) {
+      status.textContent = out.message || "無可用曲線資料";
+      Plotly.newPlot("curvePlot", [], { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff" }, { responsive: true });
+      return;
+    }
+
+    const yMain = mode === "mix" && showDelta ? out.yDelta || out.y : out.y;
     const traces = [
       {
-        x: out.x || [],
-        y: out.y || [],
+        x: out.x,
+        y: yMain,
         type: "scatter",
         mode: "lines",
-        name: mode === "single" ? "single curve" : "mix curve",
+        name: mode === "mix" ? (showDelta ? "Δy 曲線" : "混合曲線 y") : "單材曲線 y",
         line: { color: "#1e5dff", width: 2 },
       },
     ];
 
-    if (mode === "mix" && out.xyzSeries?.x?.length) {
+    if (mode === "mix" && showXYZ && out.xyzSeries?.x?.length) {
       traces.push(
-        { x: out.x, y: out.xyzSeries.x, type: "scatter", mode: "lines", name: "X", line: { dash: "dot" } },
-        { x: out.x, y: out.xyzSeries.y, type: "scatter", mode: "lines", name: "Y", line: { dash: "dash" } },
-        { x: out.x, y: out.xyzSeries.z, type: "scatter", mode: "lines", name: "Z", line: { dash: "solid" } }
+        { x: out.x, y: out.xyzSeries.x, type: "scatter", mode: "lines", name: "X 除臭", line: { dash: "dot" } },
+        { x: out.x, y: out.xyzSeries.y, type: "scatter", mode: "lines", name: "Y 吸水", line: { dash: "dash" } },
+        { x: out.x, y: out.xyzSeries.z, type: "scatter", mode: "lines", name: "Z 抗粉碎", line: { dash: "solid" } }
       );
+    }
+
+    const shapes = [];
+    const annotations = [];
+    if (mode === "mix" && Number.isFinite(out.r0)) {
+      shapes.push({
+        type: "line",
+        x0: out.r0,
+        x1: out.r0,
+        y0: 0,
+        y1: 1,
+        xref: "x",
+        yref: "paper",
+        line: { color: "#ff7a00", width: 1.5, dash: "dash" },
+      });
+      annotations.push({
+        x: out.r0,
+        y: 1,
+        xref: "x",
+        yref: "paper",
+        yanchor: "bottom",
+        text: `baseline r0=${(out.r0 * 100).toFixed(2)}%`,
+        showarrow: false,
+        font: { size: 11, color: "#ff7a00" },
+      });
     }
 
     Plotly.newPlot(
       "curvePlot",
       traces,
       {
-        margin: { l: 45, r: 10, t: 30, b: 40 },
+        margin: { l: 45, r: 10, t: 40, b: 45 },
         paper_bgcolor: "#ffffff",
         plot_bgcolor: "#ffffff",
         xaxis: { title: "ratio r" },
-        yaxis: { title: "score (0~100)", range: [0, 100] },
+        yaxis: { title: showDelta ? "Δscore" : "score (0~100)" },
         legend: { orientation: "h" },
+        shapes,
+        annotations,
       },
       { responsive: true }
     );
 
-    status.textContent = out.message || "曲線繪製完成";
+    if (mode === "mix") {
+      updateContribSlider(rMax, steps, out.r0 ?? 0);
+      await renderContributions(Number(document.getElementById("contribR").value));
+      status.textContent = `曲線完成（規則 ${rule}）`;
+    } else {
+      status.textContent = "單一材料曲線完成";
+      Plotly.newPlot("contribPlot", [], { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff" }, { responsive: true });
+    }
   } catch (e) {
     status.textContent = `曲線繪製失敗：${e.message}`;
   }
 }
 
 async function main() {
+  try {
+    const mats = await apiGet("/api/materials?page=1&pageSize=500");
+    allMaterialNames = (Array.isArray(mats) ? mats : []).map((m) => m.name).filter(Boolean);
+  } catch (_e) {
+    allMaterialNames = [];
+  }
+  fillMaterialOptions([]);
   points = await apiGet("/api/map/points");
-  renderPlot(points);
+  renderMap(points);
   toggleCurveModeRows();
 
+  document.getElementById("btnResetView").addEventListener("click", resetView);
+  document.getElementById("btnExportCandidates").addEventListener("click", exportCandidatesCsv);
   document.getElementById("curveMode").addEventListener("change", toggleCurveModeRows);
   document.getElementById("curveP").addEventListener("input", (e) => {
     document.getElementById("curvePLabel").textContent = Number(e.target.value).toFixed(2);
   });
   document.getElementById("btnRenderCurve").addEventListener("click", renderCurve);
-  document.getElementById("btnResetView").addEventListener("click", resetView);
-  document.getElementById("btnExportCandidates").addEventListener("click", exportCandidatesCsv);
+  document.getElementById("contribR").addEventListener("input", async (e) => {
+    const rValue = Number(e.target.value || 0);
+    document.getElementById("contribRLabel").textContent = `r=${rValue.toFixed(4)}`;
+    if (document.getElementById("curveMode").value === "mix" && selectedBom?.sample?.id) {
+      await renderContributions(rValue);
+    }
+  });
 
   document.getElementById("btnReco").addEventListener("click", async () => {
     const status = document.getElementById("recoStatus");

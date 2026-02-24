@@ -53,26 +53,38 @@ function buildAxis(rMax, steps) {
   return { x, safeSteps, safeRMax };
 }
 
-function normalizeRecipeForScan(recipe, scanMaterialName, scanR) {
+function recipeWithScan(recipe, scanMaterialName, scanR) {
   const out = recipe.map((x) => ({ ...x }));
-  let hasScan = false;
-  for (const it of out) {
-    if (it.material === scanMaterialName) {
-      it.ratio = scanR;
-      hasScan = true;
-    }
-  }
-  if (!hasScan) out.push({ material: scanMaterialName, ratio: scanR });
-
-  const others = out.filter((x) => x.material !== scanMaterialName);
-  const otherBase = others.reduce((t, x) => t + x.ratio, 0);
-  const remaining = Math.max(0, 1 - scanR);
-  if (otherBase > 0) {
-    for (const it of others) it.ratio = (it.ratio / otherBase) * remaining;
-  } else {
-    for (const it of others) it.ratio = 0;
-  }
+  const idx = out.findIndex((x) => x.material === scanMaterialName);
+  if (idx >= 0) out[idx].ratio = scanR;
+  else out.push({ material: scanMaterialName, ratio: scanR });
   return out;
+}
+
+export function applyScanRule(recipe, scanMaterialName, scanR, rule = "A") {
+  const raw = recipeWithScan(recipe, scanMaterialName, scanR);
+  const others = raw.filter((x) => x.material !== scanMaterialName);
+  const result = raw.map((x) => ({ ...x }));
+  const safeRule = String(rule || "A").toUpperCase();
+
+  if (safeRule === "A") {
+    const remaining = Math.max(0, 1 - scanR);
+    const sumOthers = others.reduce((t, x) => t + x.ratio, 0);
+    for (const it of result) {
+      if (it.material === scanMaterialName) {
+        it.ratio = scanR;
+      } else if (sumOthers > 0) {
+        it.ratio = (it.ratio / sumOthers) * remaining;
+      } else {
+        it.ratio = 0;
+      }
+    }
+  } else {
+    const sum = result.reduce((t, x) => t + x.ratio, 0) || 1;
+    for (const it of result) it.ratio = it.ratio / sum;
+  }
+
+  return result;
 }
 
 function evalRecipeMetric(materialMap, recipe, metric, p) {
@@ -93,21 +105,42 @@ function evalRecipeXYZ(materialMap, recipe, p) {
   };
 }
 
+function detectR0(recipe, scanMaterialName) {
+  const item = recipe.find((x) => x.material === scanMaterialName);
+  return item ? Number(item.ratio) : 0;
+}
+
 export function evaluateSingleMaterialCurve(materialMeta, metric, p = 0.5, rMax = 0.3, steps = 31) {
   const { x } = buildAxis(rMax, steps);
   const y = x.map((r) => Number(materialMetricValue(materialMeta, metric, p, r).toFixed(2)));
   return { x, y };
 }
 
-export function evaluateMixedCurve(materialMap, recipe, metric, scanMaterialName, p = 0.5, rMax = 0.3, steps = 31) {
+export function evaluateContributions(materialMap, recipe, metric, scanMaterialName, p = 0.5, rValue = 0, rule = "A") {
+  const normalized = applyScanRule(recipe, scanMaterialName, Number(rValue), rule);
+  const parts = normalized
+    .map((it) => {
+      const mat = materialMap.get(it.material);
+      if (!mat) return null;
+      const value = Number(materialMetricValue(mat, metric, p, it.ratio).toFixed(2));
+      return { material: it.material, value };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.value - a.value);
+
+  return { rValue: Number(rValue), parts };
+}
+
+export function evaluateMixedCurve(materialMap, recipe, metric, scanMaterialName, p = 0.5, rMax = 0.3, steps = 31, rule = "A") {
   const { x } = buildAxis(rMax, steps);
   const y = [];
   const xSeries = [];
   const ySeries = [];
   const zSeries = [];
+  const r0 = detectR0(recipe, scanMaterialName);
 
   for (const scanR of x) {
-    const normalized = normalizeRecipeForScan(recipe, scanMaterialName, scanR);
+    const normalized = applyScanRule(recipe, scanMaterialName, scanR, rule);
     y.push(Number(evalRecipeMetric(materialMap, normalized, metric, p).toFixed(2)));
     const xyz = evalRecipeXYZ(materialMap, normalized, p);
     xSeries.push(Number(xyz.x.toFixed(2)));
@@ -115,9 +148,15 @@ export function evaluateMixedCurve(materialMap, recipe, metric, scanMaterialName
     zSeries.push(Number(xyz.z.toFixed(2)));
   }
 
+  const nearestIdx = x.reduce((best, cur, idx) => (Math.abs(cur - r0) < Math.abs(x[best] - r0) ? idx : best), 0);
+  const baseY = y[nearestIdx] ?? 0;
+  const yDelta = y.map((v) => Number((v - baseY).toFixed(2)));
+
   return {
     x,
     y,
+    yDelta,
+    r0: Number(r0.toFixed(4)),
     xyzSeries: { x: xSeries, y: ySeries, z: zSeries },
   };
 }

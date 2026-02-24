@@ -54,6 +54,7 @@ router.post(
     const p = Math.max(0, Math.min(1, mustNumber(b.p ?? 0.5, "p")));
     const rMax = Math.max(0.01, Math.min(1, mustNumber(b.rMax ?? 0.3, "rMax")));
     const steps = Math.max(5, Math.min(101, Number(b.steps || 31)));
+    const rule = ["A", "B"].includes(String(b.rule || "A").toUpperCase()) ? String(b.rule || "A").toUpperCase() : "A";
 
     if (!sampleId) return res.status(400).json({ ok: false, error: "sampleId required" });
     if (!ALLOWED_METRICS.has(metric)) return res.status(400).json({ ok: false, error: "invalid metric" });
@@ -89,7 +90,7 @@ router.post(
     const sum = recipe.reduce((t, x) => t + x.ratio, 0) || 1;
     for (const it of recipe) it.ratio /= sum;
 
-    const out = evaluateMixedCurve(materialMap, recipe, metric, scanMaterialName, p, rMax, steps);
+    const out = evaluateMixedCurve(materialMap, recipe, metric, scanMaterialName, p, rMax, steps, rule);
     res.json({ ok: true, data: out });
   })
 );

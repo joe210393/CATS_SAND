@@ -65,56 +65,70 @@
       </div>
 
       <div class="card">
-        <div class="small">材料/混合波形（V1.1）</div>
+        <div class="small">材料/混合波形（V1.2）</div>
         <div class="row">
           <div>
-            <label class="small">mode</label>
+            <label class="small">mode（模式）</label>
             <select id="curveMode">
-              <option value="single">single</option>
-              <option value="mix">mix</option>
+              <option value="single">single = 單一材料（只看某材料曲線）</option>
+              <option value="mix">mix = 混合配方（以此樣品 BOM 為基底，掃描某材料比例）</option>
             </select>
           </div>
           <div>
-            <label class="small">metric</label>
+            <label class="small">metric（指標）</label>
             <select id="curveMetric">
-              <option value="deodor_rate">deodor_rate</option>
-              <option value="absorption">absorption</option>
-              <option value="dust_score">dust_score</option>
-              <option value="clump_strength">clump_strength</option>
-              <option value="z_crush">z_crush</option>
+              <option value="deodor_rate">deodor_rate = 除臭率（↑越好）</option>
+              <option value="absorption">absorption = 吸水性（↑越好）</option>
+              <option value="dust_score">dust_score = 低粉塵分數（↑越好）</option>
+              <option value="clump_strength">clump_strength = 結團強度（↑越好）</option>
+              <option value="z_crush">z_crush = 抗粉碎/完整度（↑越好）</option>
             </select>
           </div>
         </div>
         <div class="row" id="singleRow">
           <div>
-            <label class="small">materialName（single）</label>
+            <label class="small">materialName（材料，單一曲線）</label>
             <select id="curveMaterial"></select>
           </div>
         </div>
         <div class="row" id="mixRow">
           <div>
-            <label class="small">scanMaterialName（mix）</label>
+            <label class="small">scanMaterialName（掃描材料，混合曲線）</label>
             <select id="curveScanMaterial"></select>
           </div>
         </div>
         <div class="row">
           <div>
-            <label class="small">p（0..1）</label>
+            <label class="small">p（製程參數，0=低，1=高）</label>
             <input id="curveP" type="range" min="0" max="1" step="0.01" value="0.5" />
             <div id="curvePLabel" class="small">0.50</div>
           </div>
           <div>
-            <label class="small">rMax（0..1）</label>
+            <label class="small">rMax（掃描上限）</label>
             <input id="curveRMax" type="number" min="0.05" max="1" step="0.01" value="0.3" />
           </div>
           <div>
-            <label class="small">steps</label>
+            <label class="small">steps（步數，越高越平滑）</label>
             <input id="curveSteps" type="number" min="5" max="101" step="1" value="31" />
           </div>
+        </div>
+        <div class="small">掃描時比例調整規則</div>
+        <div class="row small">
+          <label><input type="radio" name="scanRule" value="A" checked /> A 等比例縮小其餘材料（保持100%）</label>
+          <label><input type="radio" name="scanRule" value="B" /> B 先不變，最後正規化到100%</label>
+        </div>
+        <div class="row small">
+          <label><input type="checkbox" id="chkDelta" checked /> 顯示 Δy（相對於 baseline）</label>
+          <label><input type="checkbox" id="chkXYZ" checked /> 顯示 XYZ 三線</label>
         </div>
         <button id="btnRenderCurve">Render Curve</button>
         <div id="curveStatus" class="small"></div>
         <div id="curvePlot" style="height:260px;"></div>
+        <hr />
+        <div class="small">材料貢獻拆解（選擇掃描比例 r）</div>
+        <input id="contribR" type="range" min="0" max="0.3" step="0.01" value="0" />
+        <div id="contribRLabel" class="small">r=0.00</div>
+        <div id="contribPlot" style="height:220px;"></div>
       </div>
 
       <div class="card">
