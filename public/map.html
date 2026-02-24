@@ -72,6 +72,27 @@
       </div>
 
       <div class="card">
+        <div class="small">樣品混成比例 XYZ 曲面（同材料、不同配比）</div>
+        <div class="row">
+          <div>
+            <label class="small">掃描點數（越高越細）</label>
+            <input id="surfacePoints" type="number" value="180" min="30" max="450" />
+          </div>
+          <div>
+            <label class="small">變動強度（0.05~1.2）</label>
+            <input id="surfaceStrength" type="number" value="0.35" min="0.05" max="1.2" step="0.05" />
+          </div>
+          <div>
+            <label class="small">p（製程）</label>
+            <input id="surfaceP" type="number" value="0.5" step="0.01" min="0" max="1" />
+          </div>
+        </div>
+        <button id="btnRenderSampleSurface">生成樣品曲面/點雲</button>
+        <div id="sampleSurfaceStatus" class="small"></div>
+        <div id="sampleSurfacePlot" style="height:280px;"></div>
+      </div>
+
+      <div class="card">
         <div class="small">主次配方求解（可直接在地圖操作）</div>
         <div class="row">
           <div>

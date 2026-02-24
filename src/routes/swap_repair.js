@@ -19,20 +19,23 @@ router.post(
     const baseBOM = Array.isArray(b.baseBOM) && b.baseBOM.length ? b.baseBOM : await loadBaseBomBySampleId(Number(b.baseSampleId));
     if (!baseBOM.length) return res.status(400).json({ ok: false, error: "baseBOM/baseSampleId required" });
 
-    const result = await runSwapRepair({
-      baseBOM,
-      fromMainMaterialId: Number(b.fromMainMaterialId),
-      toMainMaterialId: Number(b.toMainMaterialId),
-      targetXYZ: {
-        x: Number(b.targetXYZ?.x || 0),
-        y: Number(b.targetXYZ?.y || 0),
-        z: Number(b.targetXYZ?.z || 0),
-      },
-      p: Number(b.p ?? 0.5),
-      topN: Number(b.topN || 5),
-    });
-
-    res.json({ ok: true, data: result });
+    try {
+      const result = await runSwapRepair({
+        baseBOM,
+        fromMainMaterialId: Number(b.fromMainMaterialId),
+        toMainMaterialId: Number(b.toMainMaterialId),
+        targetXYZ: {
+          x: Number(b.targetXYZ?.x || 0),
+          y: Number(b.targetXYZ?.y || 0),
+          z: Number(b.targetXYZ?.z || 0),
+        },
+        p: Number(b.p ?? 0.5),
+        topN: Number(b.topN || 5),
+      });
+      res.json({ ok: true, data: result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e?.message || "swap-repair failed" });
+    }
   })
 );
 

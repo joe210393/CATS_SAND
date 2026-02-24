@@ -19,6 +19,7 @@ function cloneBom(bom) {
 }
 
 async function loadTagsByIds(ids) {
+  if (!ids?.length) return [];
   const placeholders = ids.map(() => "?").join(",");
   const rows = await query(`SELECT id, name FROM materials WHERE id IN (${placeholders})`, ids);
   return rows.map((r) => ({ id: Number(r.id), name: r.name }));
@@ -32,11 +33,16 @@ export async function runSwapRepair({
   p = 0.5,
   topN = 5,
 }) {
+  if (!Number.isFinite(Number(fromMainMaterialId)) || !Number.isFinite(Number(toMainMaterialId))) {
+    throw new Error("fromMainMaterialId/toMainMaterialId required");
+  }
   const base = normalizeTo100(cloneBom(baseBOM));
+  if (!base.length) throw new Error("baseBOM is empty");
   const before = await evaluateBomItems(base, p);
 
   const fromId = asKey(fromMainMaterialId);
   const toId = asKey(toMainMaterialId);
+  if (fromId === toId) throw new Error("from/to material cannot be same");
   const fromItem = base.find((it) => it.material_id === fromId);
   if (!fromItem) throw new Error("fromMainMaterialId not in base BOM");
 
@@ -56,8 +62,10 @@ export async function runSwapRepair({
     z: Number(targetXYZ.z) - Number(afterSwap.xyz.z),
   };
 
-  const existingIds = afterSwapBom.map((x) => x.material_id);
-  const candidates = await query(`SELECT id FROM materials WHERE id NOT IN (${existingIds.map(() => "?").join(",")})`, existingIds);
+  const existingIds = afterSwapBom.map((x) => x.material_id).filter((x) => Number.isFinite(Number(x)));
+  const candidates = existingIds.length
+    ? await query(`SELECT id FROM materials WHERE id NOT IN (${existingIds.map(() => "?").join(",")})`, existingIds)
+    : await query(`SELECT id FROM materials`);
 
   const suggestions = [];
   for (const row of candidates.slice(0, 20)) {
@@ -114,10 +122,13 @@ export async function runSwapRepair({
   }
 
   repairedCandidates.sort((a, b) => a.distance - b.distance);
-  const materialNames = await loadTagsByIds(
-    [...new Set(topSuggestions.map((s) => s.material_id).concat(repairedCandidates.flatMap((c) => c.bomItems.map((b) => b.material_id))))]
-      .filter(Boolean)
-  );
+  const nameIds = [
+    ...new Set(topSuggestions.map((s) => s.material_id).concat(repairedCandidates.flatMap((c) => c.bomItems.map((b) => b.material_id)))),
+  ]
+    .filter(Boolean)
+    .map((x) => Number(x))
+    .filter((x) => Number.isFinite(x));
+  const materialNames = await loadTagsByIds(nameIds);
   const nameMap = new Map(materialNames.map((m) => [m.id, m.name]));
   topSuggestions.forEach((s) => {
     s.material_name = nameMap.get(s.material_id) || String(s.material_id);

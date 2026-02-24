@@ -14,6 +14,8 @@ let loadingTimer = null;
 let loadingTick = 0;
 let allMaterialNames = [];
 let allMaterials = [];
+let isMapPlotBusy = false;
+let contribReqSeq = 0;
 
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
@@ -77,6 +79,9 @@ function buildMapLayout() {
 }
 
 function renderMap(inputPoints) {
+  if (isMapPlotBusy) return;
+  isMapPlotBusy = true;
+  Plotly.purge("plot");
   const base = {
     type: "scatter3d",
     mode: "markers",
@@ -108,10 +113,15 @@ function renderMap(inputPoints) {
     marker: { size: 8, color: "#1e5dff", line: { color: "#0b2c96", width: 1.5 } },
   };
 
-  Plotly.newPlot("plot", [base, target, selectedTrace], buildMapLayout(), { responsive: true, doubleClick: false });
+  Plotly.newPlot("plot", [base, target, selectedTrace], buildMapLayout(), { responsive: true, doubleClick: false })
+    .catch((e) => console.warn("plot render failed:", e?.message || e))
+    .finally(() => {
+      isMapPlotBusy = false;
+    });
   plotEl = document.getElementById("plot");
 
   plotEl.on("plotly_click", async (data) => {
+    if (isMapPlotBusy) return;
     const idx = data?.points?.[0]?.pointNumber;
     const curve = data?.points?.[0]?.curveNumber;
     if (curve !== BASE_TRACE_INDEX || idx == null) return;
@@ -136,7 +146,7 @@ function resetView() {
 }
 
 function showTargetPoint(target) {
-  if (!plotEl) return;
+  if (!plotEl || isMapPlotBusy) return;
   Plotly.restyle(
     plotEl,
     {
@@ -245,6 +255,14 @@ async function renderSelectedSampleInfo(sample) {
     }
     const baseSampleSel = document.getElementById("mapBaseSample");
     if (baseSampleSel) baseSampleSel.value = String(sample.id);
+    if (out.bomItems?.length) {
+      const idByName = new Map(allMaterials.map((m) => [m.name, String(m.id)]));
+      const firstMatId = idByName.get(out.bomItems[0].material);
+      if (firstMatId) {
+        document.getElementById("mapMainMaterial").value = firstMatId;
+        document.getElementById("mapSwapFrom").value = firstMatId;
+      }
+    }
     document.getElementById("curveStatus").textContent = out.bomItems?.length
       ? `已載入 ${out.sample.name} 的 BOM。baseline r0 會顯示在曲線圖上。`
       : "此樣品尚未設定 BOM";
@@ -366,6 +384,7 @@ function updateContribSlider(rMax, steps, r0) {
 }
 
 async function renderContributions(rValue) {
+  const seq = ++contribReqSeq;
   const metric = document.getElementById("curveMetric").value;
   const p = Number(document.getElementById("curveP").value || 0.5);
   const scanMaterialName = document.getElementById("curveScanMaterial").value;
@@ -392,7 +411,8 @@ async function renderContributions(rValue) {
       values.push(Number(others.toFixed(2)));
     }
 
-    Plotly.newPlot(
+    if (seq !== contribReqSeq) return;
+    Plotly.react(
       "contribPlot",
       [{ type: "bar", x: labels, y: values, marker: { color: "#3f6df6" } }],
       {
@@ -449,7 +469,12 @@ async function renderCurve() {
 
     if (!out.x?.length) {
       status.textContent = out.message || "無可用曲線資料";
-      Plotly.newPlot("curvePlot", [], { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff" }, { responsive: true });
+      Plotly.react(
+        "curvePlot",
+        [],
+        { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", xaxis: { title: "ratio r" }, yaxis: { title: "score" } },
+        { responsive: true }
+      );
       return;
     }
 
@@ -498,7 +523,7 @@ async function renderCurve() {
       });
     }
 
-    Plotly.newPlot(
+    Plotly.react(
       "curvePlot",
       traces,
       {
@@ -520,7 +545,12 @@ async function renderCurve() {
       status.textContent = `曲線完成（規則 ${rule}）`;
     } else {
       status.textContent = "單一材料曲線完成";
-      Plotly.newPlot("contribPlot", [], { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff" }, { responsive: true });
+      Plotly.react(
+        "contribPlot",
+        [],
+        { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", xaxis: { title: "" }, yaxis: { title: "" } },
+        { responsive: true }
+      );
     }
   } catch (e) {
     status.textContent = `曲線繪製失敗：${e.message}`;
@@ -577,6 +607,80 @@ async function refreshMapData() {
   points = await apiGet("/api/map/points");
   renderMap(points);
   fillV2MapSelectors();
+}
+
+async function renderSampleRatioSurface() {
+  const status = document.getElementById("sampleSurfaceStatus");
+  if (!selectedBom?.sample?.id) {
+    status.textContent = "請先點選一個樣品";
+    return;
+  }
+  status.textContent = "生成中…";
+  try {
+    const out = await apiPost(`/api/samples/${selectedBom.sample.id}/ratio-surface`, {
+      points: Number(document.getElementById("surfacePoints").value || 180),
+      strength: Number(document.getElementById("surfaceStrength").value || 0.35),
+      p: Number(document.getElementById("surfaceP").value || 0.5),
+    });
+    const pts = out.points || [];
+    if (!pts.length) {
+      status.textContent = out.message || "無資料";
+      return;
+    }
+    const xs = pts.map((p) => p.xyz.x);
+    const ys = pts.map((p) => p.xyz.y);
+    const zs = pts.map((p) => p.xyz.z);
+    const base = out.base?.xyz || pts[0].xyz;
+    const traces = [
+      {
+        type: "mesh3d",
+        x: xs,
+        y: ys,
+        z: zs,
+        opacity: 0.15,
+        color: "#6f9fff",
+        alphahull: 8,
+        name: "比例掃描包絡",
+      },
+      {
+        type: "scatter3d",
+        mode: "markers",
+        x: xs,
+        y: ys,
+        z: zs,
+        marker: { size: 3, color: "#222" },
+        name: "不同配比點",
+      },
+      {
+        type: "scatter3d",
+        mode: "markers+text",
+        x: [base.x],
+        y: [base.y],
+        z: [base.z],
+        text: ["基準配比"],
+        marker: { size: 7, color: "#d30000", symbol: "diamond" },
+        name: "基準樣品",
+      },
+    ];
+    Plotly.react(
+      "sampleSurfacePlot",
+      traces,
+      {
+        margin: { l: 0, r: 0, t: 24, b: 0 },
+        scene: {
+          xaxis: { title: "X 除臭" },
+          yaxis: { title: "Y 吸水" },
+          zaxis: { title: "Z 抗粉碎" },
+        },
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+      },
+      { responsive: true }
+    );
+    status.textContent = `完成：共 ${pts.length} 個配比點`;
+  } catch (e) {
+    status.textContent = `失敗：${e.message}`;
+  }
 }
 
 async function main() {
@@ -699,6 +803,7 @@ async function main() {
       status.textContent = `失敗：${e.message}`;
     }
   });
+  document.getElementById("btnRenderSampleSurface").addEventListener("click", renderSampleRatioSurface);
 }
 
 main();

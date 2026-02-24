@@ -6,6 +6,24 @@ import { evaluateBomItems, getActiveBomItemsBySampleId, recomputeAllSampleScores
 const router = express.Router();
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+function randn() {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function normalizeBom(items) {
+  const positive = items.map((it) => ({
+    material_id: Number(it.material_id),
+    ratioPercent: Math.max(0.001, Number(it.ratioPercent || 0)),
+    material: it.material,
+  }));
+  const sum = positive.reduce((t, it) => t + it.ratioPercent, 0) || 1;
+  return positive.map((it) => ({ ...it, ratioPercent: (it.ratioPercent / sum) * 100 }));
+}
+
 router.get(
   "/",
   ah(async (req, res) => {
@@ -40,6 +58,55 @@ router.post(
     const p = Number(req.body?.p ?? 0.5);
     const out = await recomputeAllSampleScores(p);
     res.json({ ok: true, data: out });
+  })
+);
+
+router.post(
+  "/:id/ratio-surface",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    const p = Number(req.body?.p ?? 0.5);
+    const pointsCount = Math.min(450, Math.max(30, Number(req.body?.points || 180)));
+    const strength = Math.max(0.05, Math.min(1.2, Number(req.body?.strength || 0.35)));
+    const baseItems = await getActiveBomItemsBySampleId(id);
+    if (!baseItems.length) {
+      return res.json({ ok: true, data: { points: [], base: null, message: "此樣品尚未設定 BOM" } });
+    }
+
+    const baseEval = await evaluateBomItems(baseItems, p);
+    const points = [
+      {
+        xyz: baseEval.xyz,
+        metrics: baseEval.metrics,
+        bomItems: baseItems,
+        isBase: true,
+      },
+    ];
+
+    for (let i = 0; i < pointsCount; i += 1) {
+      const mutated = normalizeBom(
+        baseItems.map((it) => ({
+          ...it,
+          ratioPercent: Number(it.ratioPercent) * (1 + randn() * strength),
+        }))
+      );
+      const out = await evaluateBomItems(mutated, p);
+      points.push({
+        xyz: out.xyz,
+        metrics: out.metrics,
+        bomItems: mutated,
+        isBase: false,
+      });
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        base: points[0],
+        points,
+        message: "同材料組合比例掃描完成",
+      },
+    });
   })
 );
 
