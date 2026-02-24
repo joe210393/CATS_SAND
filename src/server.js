@@ -6,6 +6,7 @@ import materialsRouter from "./routes/materials.js";
 import bomsRouter from "./routes/boms.js";
 import mapRouter from "./routes/map.js";
 import recommendationsRouter from "./routes/recommendations.js";
+import curvesRouter from "./routes/curves.js";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/api/materials", materialsRouter);
 app.use("/api/boms", bomsRouter);
 app.use("/api/map", mapRouter);
 app.use("/api/recommendations", recommendationsRouter);
+app.use("/api/curves", curvesRouter);
 
 app.use((err, _req, res, _next) => {
   console.error("Unhandled API error:", err);

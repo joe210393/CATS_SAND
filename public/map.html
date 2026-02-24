@@ -65,6 +65,59 @@
       </div>
 
       <div class="card">
+        <div class="small">材料/混合波形（V1.1）</div>
+        <div class="row">
+          <div>
+            <label class="small">mode</label>
+            <select id="curveMode">
+              <option value="single">single</option>
+              <option value="mix">mix</option>
+            </select>
+          </div>
+          <div>
+            <label class="small">metric</label>
+            <select id="curveMetric">
+              <option value="deodor_rate">deodor_rate</option>
+              <option value="absorption">absorption</option>
+              <option value="dust_score">dust_score</option>
+              <option value="clump_strength">clump_strength</option>
+              <option value="z_crush">z_crush</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" id="singleRow">
+          <div>
+            <label class="small">materialName（single）</label>
+            <select id="curveMaterial"></select>
+          </div>
+        </div>
+        <div class="row" id="mixRow">
+          <div>
+            <label class="small">scanMaterialName（mix）</label>
+            <select id="curveScanMaterial"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label class="small">p（0..1）</label>
+            <input id="curveP" type="range" min="0" max="1" step="0.01" value="0.5" />
+            <div id="curvePLabel" class="small">0.50</div>
+          </div>
+          <div>
+            <label class="small">rMax（0..1）</label>
+            <input id="curveRMax" type="number" min="0.05" max="1" step="0.01" value="0.3" />
+          </div>
+          <div>
+            <label class="small">steps</label>
+            <input id="curveSteps" type="number" min="5" max="101" step="1" value="31" />
+          </div>
+        </div>
+        <button id="btnRenderCurve">Render Curve</button>
+        <div id="curveStatus" class="small"></div>
+        <div id="curvePlot" style="height:260px;"></div>
+      </div>
+
+      <div class="card">
         <div class="small">候選配方方案</div>
         <div id="candidates"></div>
       </div>

@@ -67,6 +67,50 @@ router.get(
 })
 );
 
+router.get(
+  "/:id/active-bom",
+  ah(async (req, res) => {
+    const id = Number(req.params.id);
+    const sRows = await query(`SELECT id, name, x_deodor, y_absorb, z_crush FROM samples WHERE id=?`, [id]);
+    if (!sRows.length) return res.status(404).json({ ok: false, error: "sample not found" });
+    const s = sRows[0];
+
+    const bRows = await query(
+      `SELECT id, version, is_active FROM boms WHERE sample_id=? AND is_active=1 ORDER BY created_at DESC LIMIT 1`,
+      [id]
+    );
+    if (!bRows.length) {
+      return res.json({
+        ok: true,
+        data: {
+          sample: { id: s.id, name: s.name, x: Number(s.x_deodor), y: Number(s.y_absorb), z: Number(s.z_crush) },
+          bomItems: [],
+          message: "此樣品尚未設定 BOM",
+        },
+      });
+    }
+
+    const bomId = bRows[0].id;
+    const items = await query(
+      `SELECT m.name AS material, bi.ratio AS ratioPercent
+       FROM bom_items bi
+       JOIN materials m ON m.id=bi.material_id
+       WHERE bi.bom_id=?
+       ORDER BY bi.ratio DESC`,
+      [bomId]
+    );
+
+    res.json({
+      ok: true,
+      data: {
+        sample: { id: s.id, name: s.name, x: Number(s.x_deodor), y: Number(s.y_absorb), z: Number(s.z_crush) },
+        bomVersion: bRows[0].version,
+        bomItems: items.map((x) => ({ material: x.material, ratioPercent: Number(x.ratioPercent) })),
+      },
+    });
+  })
+);
+
 router.put(
   "/:id",
   ah(async (req, res) => {
