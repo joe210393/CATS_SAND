@@ -59,12 +59,67 @@
           <button id="btnReco">產生候選配方（LLM）</button>
           <button id="btnExportCandidates">匯出候選配方表</button>
         </div>
+        <div class="row">
+          <button id="btnRecomputeAll">用新公式重算全部樣品分數</button>
+        </div>
         <div id="recoStatus" class="small"></div>
+        <div id="recomputeStatus" class="small"></div>
       </div>
 
       <div class="card">
         <div class="small">點選樣品資訊</div>
         <div id="sampleInfo" class="small">（點圖上的點）</div>
+      </div>
+
+      <div class="card">
+        <div class="small">主次配方求解（可直接在地圖操作）</div>
+        <div class="row">
+          <div>
+            <label class="small">主材料（main）</label>
+            <select id="mapMainMaterial"></select>
+          </div>
+          <div>
+            <label class="small">主材比例範圍（%）</label>
+            <div class="row">
+              <input id="mapMainMin" type="number" value="50" />
+              <input id="mapMainMax" type="number" value="80" />
+              <input id="mapMainStep" type="number" value="5" />
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div><label class="small">最大材料數</label><input id="mapMaxMaterials" type="number" value="6" /></div>
+          <div><label class="small">TopN</label><input id="mapTopN" type="number" value="5" /></div>
+          <div><label class="small">p（製程）</label><input id="mapP" type="number" value="0.5" step="0.01" /></div>
+        </div>
+        <button id="btnMapOptimize">在地圖上產生主次候選配方</button>
+        <div id="mapOptimizeStatus" class="small"></div>
+        <div id="mapOptimizeResults" class="small"></div>
+      </div>
+
+      <div class="card">
+        <div class="small">換主材補救（可直接在地圖操作）</div>
+        <div class="row">
+          <div>
+            <label class="small">基準樣品</label>
+            <select id="mapBaseSample"></select>
+          </div>
+          <div>
+            <label class="small">從主材 A</label>
+            <select id="mapSwapFrom"></select>
+          </div>
+          <div>
+            <label class="small">換成主材 B</label>
+            <select id="mapSwapTo"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div><label class="small">TopN</label><input id="mapSwapTopN" type="number" value="3" /></div>
+          <div><label class="small">p（製程）</label><input id="mapSwapP" type="number" value="0.5" step="0.01" /></div>
+        </div>
+        <button id="btnMapSwapRepair">在地圖上計算換主材補救</button>
+        <div id="mapSwapStatus" class="small"></div>
+        <div id="mapSwapResults" class="small"></div>
       </div>
 
       <div class="card">

@@ -1,7 +1,7 @@
 import express from "express";
 import { exec, query } from "../db.js";
 import { safeJsonParse } from "../utils/validate.js";
-import { evaluateBomItems, getActiveBomItemsBySampleId } from "../services/recipe_engine.js";
+import { evaluateBomItems, getActiveBomItemsBySampleId, recomputeAllSampleScores } from "../services/recipe_engine.js";
 
 const router = express.Router();
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -32,6 +32,15 @@ router.get(
 
   res.json({ ok: true, data: rows, page, pageSize });
 })
+);
+
+router.post(
+  "/recompute-scores",
+  ah(async (req, res) => {
+    const p = Number(req.body?.p ?? 0.5);
+    const out = await recomputeAllSampleScores(p);
+    res.json({ ok: true, data: out });
+  })
 );
 
 router.post(

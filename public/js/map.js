@@ -13,6 +13,7 @@ let lastCurve = null;
 let loadingTimer = null;
 let loadingTick = 0;
 let allMaterialNames = [];
+let allMaterials = [];
 
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
@@ -161,6 +162,27 @@ function fillMaterialOptions(names) {
   if (merged.includes(prevScan)) scanSel.value = prevScan;
 }
 
+function fillV2MapSelectors() {
+  const materialOptions = allMaterials.map((m) => `<option value="${m.id}">${m.name}</option>`).join("");
+  const sampleOptions = points.map((p) => `<option value="${p.id}">${p.name}</option>`).join("");
+  const mainSel = document.getElementById("mapMainMaterial");
+  const fromSel = document.getElementById("mapSwapFrom");
+  const toSel = document.getElementById("mapSwapTo");
+  const sampleSel = document.getElementById("mapBaseSample");
+  const oldMain = mainSel.value;
+  const oldFrom = fromSel.value;
+  const oldTo = toSel.value;
+  const oldSample = sampleSel.value;
+  mainSel.innerHTML = materialOptions;
+  fromSel.innerHTML = materialOptions;
+  toSel.innerHTML = materialOptions;
+  sampleSel.innerHTML = sampleOptions;
+  if ([...mainSel.options].some((o) => o.value === oldMain)) mainSel.value = oldMain;
+  if ([...fromSel.options].some((o) => o.value === oldFrom)) fromSel.value = oldFrom;
+  if ([...toSel.options].some((o) => o.value === oldTo)) toSel.value = oldTo;
+  if ([...sampleSel.options].some((o) => o.value === oldSample)) sampleSel.value = oldSample;
+}
+
 function sampleInfoHtml(sample, bomItems, message, metrics = null, xyz = null) {
   if (!bomItems?.length) {
     return `
@@ -221,6 +243,8 @@ async function renderSelectedSampleInfo(sample) {
       document.getElementById("tz").value = Number(out.xyz.z || 0).toFixed(2);
       showTargetPoint(out.xyz);
     }
+    const baseSampleSel = document.getElementById("mapBaseSample");
+    if (baseSampleSel) baseSampleSel.value = String(sample.id);
     document.getElementById("curveStatus").textContent = out.bomItems?.length
       ? `已載入 ${out.sample.name} 的 BOM。baseline r0 會顯示在曲線圖上。`
       : "此樣品尚未設定 BOM";
@@ -503,16 +527,69 @@ async function renderCurve() {
   }
 }
 
+function renderMapOptimizeResults(candidates = []) {
+  const el = document.getElementById("mapOptimizeResults");
+  if (!candidates.length) {
+    el.innerHTML = `<div class="small">無候選結果</div>`;
+    return;
+  }
+  const idToName = new Map(allMaterials.map((m) => [Number(m.id), m.name]));
+  el.innerHTML = candidates
+    .slice(0, 10)
+    .map((c, idx) => {
+      const bom = (c.bomItems || [])
+        .map((b) => `${idToName.get(Number(b.material_id)) || `#${b.material_id}`} ${Number(b.ratioPercent).toFixed(2)}%`)
+        .join("，");
+      return `<div class="small">#${idx + 1} dist=${c.distance} ｜ XYZ(${c.xyz?.x}, ${c.xyz?.y}, ${c.xyz?.z})<br/>${bom}</div><hr/>`;
+    })
+    .join("");
+}
+
+function renderMapSwapResults(out) {
+  const resultEl = document.getElementById("mapSwapResults");
+  if (!out) {
+    resultEl.innerHTML = `<div class="small">無結果</div>`;
+    return;
+  }
+  const suggest = (out.suggestions || [])
+    .map(
+      (s, idx) =>
+        `<div class="small">${idx + 1}. ${s.material_name || s.material_id}：ΔX ${s.expectedDeltaXYZPer1Percent?.x}, ΔY ${s.expectedDeltaXYZPer1Percent?.y}, ΔZ ${s.expectedDeltaXYZPer1Percent?.z}</div>`
+    )
+    .join("");
+  const repaired = (out.repairedCandidates || [])
+    .map((c, idx) => `<div class="small">補救 #${idx + 1} dist=${c.distance} XYZ(${c.xyz?.x}, ${c.xyz?.y}, ${c.xyz?.z})</div>`)
+    .join("");
+  resultEl.innerHTML = `
+    <div class="small">替換前 XYZ：${out.before?.xyz?.x}/${out.before?.xyz?.y}/${out.before?.xyz?.z}</div>
+    <div class="small">替換後 XYZ：${out.afterSwap?.xyz?.x}/${out.afterSwap?.xyz?.y}/${out.afterSwap?.xyz?.z}</div>
+    <div class="small">下降量 ΔXYZ：${out.afterSwap?.deltaXYZ?.x}/${out.afterSwap?.deltaXYZ?.y}/${out.afterSwap?.deltaXYZ?.z}</div>
+    <hr />
+    <div class="small">補強建議</div>
+    ${suggest || '<div class="small">無</div>'}
+    <hr />
+    <div class="small">補救候選</div>
+    ${repaired || '<div class="small">無</div>'}
+  `;
+}
+
+async function refreshMapData() {
+  points = await apiGet("/api/map/points");
+  renderMap(points);
+  fillV2MapSelectors();
+}
+
 async function main() {
   try {
     const mats = await apiGet("/api/materials?page=1&pageSize=500");
-    allMaterialNames = (Array.isArray(mats) ? mats : []).map((m) => m.name).filter(Boolean);
+    allMaterials = Array.isArray(mats) ? mats : [];
+    allMaterialNames = allMaterials.map((m) => m.name).filter(Boolean);
   } catch (_e) {
+    allMaterials = [];
     allMaterialNames = [];
   }
   fillMaterialOptions([]);
-  points = await apiGet("/api/map/points");
-  renderMap(points);
+  await refreshMapData();
   toggleCurveModeRows();
 
   document.getElementById("btnResetView").addEventListener("click", resetView);
@@ -551,6 +628,74 @@ async function main() {
       renderCandidates(out);
     } catch (e) {
       stopLoadingStatus();
+      status.textContent = `失敗：${e.message}`;
+    }
+  });
+
+  document.getElementById("btnRecomputeAll").addEventListener("click", async () => {
+    const status = document.getElementById("recomputeStatus");
+    status.textContent = "重算中…";
+    try {
+      const out = await apiPost("/api/samples/recompute-scores", { p: 0.5 });
+      status.textContent = `重算完成：${out.updated}/${out.total}`;
+      await refreshMapData();
+      if (selected?.id) {
+        const latest = points.find((p) => Number(p.id) === Number(selected.id));
+        if (latest) await renderSelectedSampleInfo(latest);
+      }
+    } catch (e) {
+      status.textContent = `重算失敗：${e.message}`;
+    }
+  });
+
+  document.getElementById("btnMapOptimize").addEventListener("click", async () => {
+    const status = document.getElementById("mapOptimizeStatus");
+    status.textContent = "主次求解中…";
+    try {
+      const out = await apiPost("/api/optimize", {
+        mainMaterialId: Number(document.getElementById("mapMainMaterial").value),
+        mainRatioRange: {
+          min: Number(document.getElementById("mapMainMin").value || 50),
+          max: Number(document.getElementById("mapMainMax").value || 80),
+          step: Number(document.getElementById("mapMainStep").value || 5),
+        },
+        targetXYZ: {
+          x: Number(document.getElementById("tx").value || 0),
+          y: Number(document.getElementById("ty").value || 0),
+          z: Number(document.getElementById("tz").value || 0),
+        },
+        constraints: {
+          maxMaterials: Number(document.getElementById("mapMaxMaterials").value || 6),
+        },
+        p: Number(document.getElementById("mapP").value || 0.5),
+        topN: Number(document.getElementById("mapTopN").value || 5),
+      });
+      status.textContent = `完成：${(out.candidates || []).length} 筆`;
+      renderMapOptimizeResults(out.candidates || []);
+    } catch (e) {
+      status.textContent = `失敗：${e.message}`;
+    }
+  });
+
+  document.getElementById("btnMapSwapRepair").addEventListener("click", async () => {
+    const status = document.getElementById("mapSwapStatus");
+    status.textContent = "換主材補救分析中…";
+    try {
+      const out = await apiPost("/api/swap-repair", {
+        baseSampleId: Number(document.getElementById("mapBaseSample").value),
+        fromMainMaterialId: Number(document.getElementById("mapSwapFrom").value),
+        toMainMaterialId: Number(document.getElementById("mapSwapTo").value),
+        targetXYZ: {
+          x: Number(document.getElementById("tx").value || 0),
+          y: Number(document.getElementById("ty").value || 0),
+          z: Number(document.getElementById("tz").value || 0),
+        },
+        p: Number(document.getElementById("mapSwapP").value || 0.5),
+        topN: Number(document.getElementById("mapSwapTopN").value || 3),
+      });
+      status.textContent = "完成";
+      renderMapSwapResults(out);
+    } catch (e) {
       status.textContent = `失敗：${e.message}`;
     }
   });

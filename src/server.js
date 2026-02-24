@@ -12,6 +12,7 @@ import modelsRouter from "./routes/models.js";
 import evaluateRouter from "./routes/evaluate.js";
 import optimizeRouter from "./routes/optimize.js";
 import swapRepairRouter from "./routes/swap_repair.js";
+import { recomputeAllSampleScores } from "./services/recipe_engine.js";
 
 const app = express();
 
@@ -42,4 +43,7 @@ app.use((err, _req, res, _next) => {
 
 app.listen(config.port, () => {
   console.log(`Server running: http://localhost:${config.port}`);
+  recomputeAllSampleScores(0.5)
+    .then((r) => console.log(`[V2] recompute done: ${r.updated}/${r.total}`))
+    .catch((e) => console.warn("[V2] recompute skipped:", e?.message || e));
 });

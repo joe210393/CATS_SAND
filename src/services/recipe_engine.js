@@ -231,3 +231,23 @@ export async function refreshSampleXYZCache(sampleId, p = 0.5) {
   );
   return out;
 }
+
+export async function recomputeAllSampleScores(p = 0.5) {
+  const sampleRows = await query(
+    `SELECT DISTINCT s.id
+     FROM samples s
+     JOIN boms b ON b.sample_id=s.id AND b.is_active=1
+     ORDER BY s.id ASC`
+  );
+  let updated = 0;
+  for (const row of sampleRows) {
+    try {
+      await refreshSampleXYZCache(Number(row.id), p);
+      updated += 1;
+    } catch (e) {
+      // Keep recompute robust even if one sample has malformed BOM data.
+      console.warn("recompute sample failed:", row.id, e?.message || e);
+    }
+  }
+  return { total: sampleRows.length, updated };
+}
