@@ -4,83 +4,24 @@ let points = [];
 let selected = null;
 let plotEl = null;
 let selectedPointIndex = null;
+let targetPoint = null;
 let lastCandidates = [];
 let loadingTimer = null;
 let loadingTick = 0;
 
-const BASE_TRACE_INDEX = 0;
-const TARGET_TRACE_INDEX = 1;
-const SELECTED_TRACE_INDEX = 2;
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
   up: { x: 0, y: 0, z: 1 },
   center: { x: 0, y: 0, z: 0 },
 };
 
-function renderPlot(inputPoints) {
-  const xs = inputPoints.map((p) => p.x);
-  const ys = inputPoints.map((p) => p.y);
-  const zs = inputPoints.map((p) => p.z);
-  const text = inputPoints.map((p) => p.name);
-
-  const trace = {
-    type: "scatter3d",
-    mode: "markers",
-    x: xs,
-    y: ys,
-    z: zs,
-    text,
-    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
-    marker: {
-      size: 4,
-      opacity: 0.9,
-      color: "#111111",
-      line: { color: "#000000", width: 1 },
-    },
-  };
-
-  const targetTrace = {
-    type: "scatter3d",
-    mode: "markers+text",
-    x: [],
-    y: [],
-    z: [],
-    text: [],
-    textposition: "top center",
-    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
-    marker: {
-      size: 8,
-      opacity: 1,
-      color: "#e10000",
-      line: { color: "#8b0000", width: 1.5 },
-      symbol: "diamond",
-    },
-  };
-
-  const selectedTrace = {
-    type: "scatter3d",
-    mode: "markers+text",
-    x: [],
-    y: [],
-    z: [],
-    text: [],
-    textposition: "top center",
-    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
-    marker: {
-      size: 7,
-      opacity: 1,
-      color: "#1e5dff",
-      line: { color: "#0b2c96", width: 1.5 },
-      symbol: "circle",
-    },
-  };
-
-  const layout = {
+function buildLayout() {
+  return {
     paper_bgcolor: "#ffffff",
     plot_bgcolor: "#ffffff",
     scene: {
       dragmode: "turntable",
-      camera: INITIAL_CAMERA,
+      camera: JSON.parse(JSON.stringify(INITIAL_CAMERA)),
       xaxis: {
         title: { text: "X 除臭", font: { color: "#cc0000" } },
         tickfont: { color: "#cc0000" },
@@ -112,41 +53,100 @@ function renderPlot(inputPoints) {
         backgroundcolor: "#ffffff",
       },
     },
-    uirevision: "keep-user-camera",
+    uirevision: "stable-camera",
     margin: { l: 0, r: 0, t: 0, b: 0 },
   };
+}
 
-  Plotly.newPlot("plot", [trace, targetTrace, selectedTrace], layout, {
-    responsive: true,
-    doubleClick: false,
-  });
+function buildTraces() {
+  const base = {
+    type: "scatter3d",
+    mode: "markers",
+    x: points.map((p) => p.x),
+    y: points.map((p) => p.y),
+    z: points.map((p) => p.z),
+    text: points.map((p) => p.name),
+    hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
+    marker: {
+      size: 4,
+      opacity: 0.9,
+      color: "#111111",
+      line: { color: "#000000", width: 1 },
+    },
+  };
 
-  plotEl = document.getElementById("plot");
-  plotEl.on("plotly_click", (data) => {
-    if (data?.points?.[0]?.curveNumber !== BASE_TRACE_INDEX) return;
-    const idx = data?.points?.[0]?.pointNumber;
-    if (idx == null) return;
-    selectedPointIndex = idx;
-    selected = inputPoints[idx];
-    Plotly.restyle(
-      plotEl,
-      {
-        x: [[selected.x]],
-        y: [[selected.y]],
-        z: [[selected.z]],
-        text: [[`Selected: ${selected.name}`]],
+  const traces = [base];
+
+  if (targetPoint) {
+    traces.push({
+      type: "scatter3d",
+      mode: "markers+text",
+      x: [targetPoint.x],
+      y: [targetPoint.y],
+      z: [targetPoint.z],
+      text: [`Target (${targetPoint.x}, ${targetPoint.y}, ${targetPoint.z})`],
+      textposition: "top center",
+      hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
+      marker: {
+        size: 8,
+        opacity: 1,
+        color: "#e10000",
+        line: { color: "#8b0000", width: 1.5 },
+        symbol: "diamond",
       },
-      [SELECTED_TRACE_INDEX]
-    );
-    renderSelectedSampleInfo(selected).catch((e) => {
-      document.getElementById("sampleInfo").innerHTML = `
-        <div><span class="badge">${selected.name}</span></div>
-        <div>X 除臭：${selected.x}</div>
-        <div>Y 吸水：${selected.y}</div>
-        <div>Z 抗粉碎：${selected.z}（低=更碎）</div>
-        <div class="small">BOM 載入失敗：${e.message}</div>`;
     });
-  });
+  }
+
+  if (selectedPointIndex != null && points[selectedPointIndex]) {
+    const p = points[selectedPointIndex];
+    traces.push({
+      type: "scatter3d",
+      mode: "markers+text",
+      x: [p.x],
+      y: [p.y],
+      z: [p.z],
+      text: [`Selected: ${p.name}`],
+      textposition: "top center",
+      hovertemplate: "<b>%{text}</b><br>X:%{x}<br>Y:%{y}<br>Z:%{z}<extra></extra>",
+      marker: {
+        size: 7,
+        opacity: 1,
+        color: "#1e5dff",
+        line: { color: "#0b2c96", width: 1.5 },
+        symbol: "circle",
+      },
+    });
+  }
+
+  return traces;
+}
+
+function renderPlot() {
+  const layout = buildLayout();
+  const config = { responsive: true, doubleClick: false };
+
+  if (!plotEl) {
+    Plotly.newPlot("plot", buildTraces(), layout, config);
+    plotEl = document.getElementById("plot");
+    plotEl.on("plotly_click", (data) => {
+      const idx = data?.points?.[0]?.pointNumber;
+      const curve = data?.points?.[0]?.curveNumber;
+      if (curve !== 0 || idx == null) return;
+      selectedPointIndex = idx;
+      selected = points[idx];
+      Plotly.react(plotEl, buildTraces(), buildLayout(), config);
+      renderSelectedSampleInfo(selected).catch((e) => {
+        document.getElementById("sampleInfo").innerHTML = `
+          <div><span class="badge">${selected.name}</span></div>
+          <div>X 除臭：${selected.x}</div>
+          <div>Y 吸水：${selected.y}</div>
+          <div>Z 抗粉碎：${selected.z}（低=更碎）</div>
+          <div class="small">BOM 載入失敗：${e.message}</div>`;
+      });
+    });
+  } else {
+    Plotly.react(plotEl, buildTraces(), buildLayout(), config);
+  }
 }
 
 async function renderSelectedSampleInfo(sample) {
@@ -189,22 +189,13 @@ async function renderSelectedSampleInfo(sample) {
 }
 
 function showTargetPoint(target) {
-  if (!plotEl) return;
-  Plotly.restyle(
-    plotEl,
-    {
-      x: [[target.x]],
-      y: [[target.y]],
-      z: [[target.z]],
-      text: [[`Target (${target.x}, ${target.y}, ${target.z})`]],
-    },
-    [TARGET_TRACE_INDEX]
-  );
+  targetPoint = target;
+  renderPlot();
 }
 
 function resetView() {
   if (!plotEl) return;
-  Plotly.relayout(plotEl, { "scene.camera": INITIAL_CAMERA });
+  Plotly.relayout(plotEl, { "scene.camera": JSON.parse(JSON.stringify(INITIAL_CAMERA)) });
 }
 
 function clearCandidates() {
@@ -313,7 +304,7 @@ function stopLoadingStatus() {
 
 async function main() {
   points = await apiGet("/api/map/points");
-  renderPlot(points);
+  renderPlot();
   document.getElementById("btnResetView").addEventListener("click", resetView);
   document.getElementById("btnExportCandidates").addEventListener("click", exportCandidatesCsv);
 
