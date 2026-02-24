@@ -14,8 +14,8 @@ let loadingTimer = null;
 let loadingTick = 0;
 let allMaterialNames = [];
 let allMaterials = [];
-let isMapPlotBusy = false;
 let contribReqSeq = 0;
+let mapRenderSeq = 0;
 
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
@@ -78,10 +78,8 @@ function buildMapLayout() {
   };
 }
 
-function renderMap(inputPoints) {
-  if (isMapPlotBusy) return;
-  isMapPlotBusy = true;
-  Plotly.purge("plot");
+async function renderMap(inputPoints) {
+  const seq = ++mapRenderSeq;
   const base = {
     type: "scatter3d",
     mode: "markers",
@@ -113,15 +111,27 @@ function renderMap(inputPoints) {
     marker: { size: 8, color: "#1e5dff", line: { color: "#0b2c96", width: 1.5 } },
   };
 
-  Plotly.newPlot("plot", [base, target, selectedTrace], buildMapLayout(), { responsive: true, doubleClick: false })
-    .catch((e) => console.warn("plot render failed:", e?.message || e))
-    .finally(() => {
-      isMapPlotBusy = false;
-    });
+  const traces = [base, target, selectedTrace];
+  try {
+    await Plotly.react("plot", traces, buildMapLayout(), { responsive: true, doubleClick: false });
+  } catch (e) {
+    // Fallback path: recover from Plotly internal broken state.
+    try {
+      Plotly.purge("plot");
+      await Plotly.newPlot("plot", traces, buildMapLayout(), { responsive: true, doubleClick: false });
+    } catch (e2) {
+      console.warn("plot render failed:", e2?.message || e2);
+      return;
+    }
+  }
+  if (seq !== mapRenderSeq) return;
   plotEl = document.getElementById("plot");
 
+  if (typeof plotEl.removeAllListeners === "function") {
+    plotEl.removeAllListeners("plotly_click");
+  }
   plotEl.on("plotly_click", async (data) => {
-    if (isMapPlotBusy) return;
+    if (seq !== mapRenderSeq) return;
     const idx = data?.points?.[0]?.pointNumber;
     const curve = data?.points?.[0]?.curveNumber;
     if (curve !== BASE_TRACE_INDEX || idx == null) return;
@@ -146,17 +156,15 @@ function resetView() {
 }
 
 function showTargetPoint(target) {
-  if (!plotEl || isMapPlotBusy) return;
-  Plotly.restyle(
-    plotEl,
-    {
-      x: [[target.x]],
-      y: [[target.y]],
-      z: [[target.z]],
-      text: [[`Target (${target.x}, ${target.y}, ${target.z})`]],
-    },
-    [TARGET_TRACE_INDEX]
-  );
+  if (!plotEl) return;
+  Plotly.restyle(plotEl, {
+    x: [[target.x]],
+    y: [[target.y]],
+    z: [[target.z]],
+    text: [[`Target (${target.x}, ${target.y}, ${target.z})`]],
+  }, [TARGET_TRACE_INDEX]).catch((e) => {
+    console.warn("target restyle failed:", e?.message || e);
+  });
 }
 
 function fillMaterialOptions(names) {
@@ -605,7 +613,7 @@ function renderMapSwapResults(out) {
 
 async function refreshMapData() {
   points = await apiGet("/api/map/points");
-  renderMap(points);
+  await renderMap(points);
   fillV2MapSelectors();
 }
 
