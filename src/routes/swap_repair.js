@@ -5,6 +5,10 @@ import { runSwapRepair } from "../services/swap_repair.js";
 const router = express.Router();
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+router.get("/", (_req, res) => {
+  res.status(405).json({ ok: false, error: "Use POST /api/swap-repair with JSON body" });
+});
+
 async function loadBaseBomBySampleId(sampleId) {
   const bomRows = await query(`SELECT id FROM boms WHERE sample_id=? AND is_active=1 ORDER BY created_at DESC LIMIT 1`, [sampleId]);
   if (!bomRows.length) return [];

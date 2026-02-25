@@ -4,6 +4,10 @@ import { optimizeRecipe } from "../services/optimizer.js";
 const router = express.Router();
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+router.get("/", (_req, res) => {
+  res.status(405).json({ ok: false, error: "Use POST /api/optimize with JSON body" });
+});
+
 router.post(
   "/",
   ah(async (req, res) => {

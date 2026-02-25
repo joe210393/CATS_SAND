@@ -25,3 +25,6 @@ npm run dev
 - Admin Models: http://localhost:3000/admin/models.html
 - Admin Optimizer: http://localhost:3000/admin/optimizer.html
 - Admin Swap Repair: http://localhost:3000/admin/swap-repair.html
+
+## 5) Training Guide (ZH)
+- `TRAINING_GUIDE_V2_ZH.md`

@@ -17,6 +17,9 @@ let allMaterials = [];
 let contribReqSeq = 0;
 let mapRenderSeq = 0;
 let lastSampleSurfaceData = null;
+let optimizeOverlayPoints = [];
+let swapOverlayPoints = [];
+let currentTargetPoint = null;
 
 const INITIAL_CAMERA = {
   eye: { x: 1.6, y: 1.6, z: 1.2 },
@@ -96,11 +99,13 @@ async function renderMap(inputPoints) {
   const target = {
     type: "scatter3d",
     mode: "markers+text",
-    x: [],
-    y: [],
-    z: [],
-    text: [],
-    hovertext: [],
+    x: currentTargetPoint ? [currentTargetPoint.x] : [],
+    y: currentTargetPoint ? [currentTargetPoint.y] : [],
+    z: currentTargetPoint ? [currentTargetPoint.z] : [],
+    text: currentTargetPoint ? ["Target"] : [],
+    hovertext: currentTargetPoint
+      ? [String(`Target | X:${currentTargetPoint.x} Y:${currentTargetPoint.y} Z:${currentTargetPoint.z}`)]
+      : [],
     hoverinfo: "text",
     textposition: "top center",
     marker: { size: 8, color: "#e10000", line: { color: "#8b0000", width: 1.5 }, symbol: "diamond" },
@@ -108,17 +113,41 @@ async function renderMap(inputPoints) {
   const selectedTrace = {
     type: "scatter3d",
     mode: "markers+text",
-    x: [],
-    y: [],
-    z: [],
-    text: [],
-    hovertext: [],
+    x: selected ? [selected.x] : [],
+    y: selected ? [selected.y] : [],
+    z: selected ? [selected.z] : [],
+    text: selected ? [String(`Selected: ${selected.name}`)] : [],
+    hovertext: selected ? [String(`${selected.name} | X:${selected.x} Y:${selected.y} Z:${selected.z}`)] : [],
     hoverinfo: "text",
     textposition: "top center",
     marker: { size: 8, color: "#1e5dff", line: { color: "#0b2c96", width: 1.5 } },
   };
+  const optimizeTrace = {
+    type: "scatter3d",
+    mode: "markers",
+    x: optimizeOverlayPoints.map((p) => p.x),
+    y: optimizeOverlayPoints.map((p) => p.y),
+    z: optimizeOverlayPoints.map((p) => p.z),
+    text: optimizeOverlayPoints.map((_, i) => `主次候選 #${i + 1}`),
+    hovertext: optimizeOverlayPoints.map((p, i) => `主次候選 #${i + 1} | X:${p.x} Y:${p.y} Z:${p.z}`),
+    hoverinfo: "text",
+    marker: { size: 5, color: "#ff7a00", line: { color: "#b95a00", width: 1 } },
+    name: "主次候選點",
+  };
+  const swapTrace = {
+    type: "scatter3d",
+    mode: "markers",
+    x: swapOverlayPoints.map((p) => p.x),
+    y: swapOverlayPoints.map((p) => p.y),
+    z: swapOverlayPoints.map((p) => p.z),
+    text: swapOverlayPoints.map((_, i) => `補救候選 #${i + 1}`),
+    hovertext: swapOverlayPoints.map((p, i) => `補救候選 #${i + 1} | X:${p.x} Y:${p.y} Z:${p.z}`),
+    hoverinfo: "text",
+    marker: { size: 5, color: "#7b3ff2", line: { color: "#4f23a6", width: 1 } },
+    name: "補救候選點",
+  };
 
-  const traces = [base, target, selectedTrace];
+  const traces = [base, target, selectedTrace, optimizeTrace, swapTrace];
   try {
     await Plotly.react("plot", traces, buildMapLayout(), { responsive: false, doubleClick: false });
   } catch (e) {
@@ -154,6 +183,7 @@ function resetView() {
 
 function showTargetPoint(target) {
   if (!plotEl) return;
+  currentTargetPoint = { x: Number(target.x), y: Number(target.y), z: Number(target.z) };
   Plotly.restyle(plotEl, {
     x: [[target.x]],
     y: [[target.y]],
@@ -881,6 +911,8 @@ async function main() {
       });
       status.textContent = `完成：${(out.candidates || []).length} 筆`;
       renderMapOptimizeResults(out.candidates || []);
+      optimizeOverlayPoints = (out.candidates || []).map((c) => c.xyz).filter(Boolean);
+      await renderMap(points);
     } catch (e) {
       status.textContent = `失敗：${e.message}`;
     }
@@ -904,6 +936,8 @@ async function main() {
       });
       status.textContent = "完成";
       renderMapSwapResults(out);
+      swapOverlayPoints = (out.repairedCandidates || []).map((c) => c.xyz).filter(Boolean);
+      await renderMap(points);
     } catch (e) {
       status.textContent = `失敗：${e.message}`;
     }
