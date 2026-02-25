@@ -6,6 +6,33 @@
   <title>3D 配方地圖</title>
   <link rel="stylesheet" href="/assets/app.css" />
   <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <style>
+    .panel .card {
+      border-left: 6px solid #d0d0d0;
+      transition: all 0.2s ease;
+    }
+    .panel .card:nth-of-type(1) { background: #fff8ec; border-left-color: #ffb454; }
+    .panel .card:nth-of-type(2) { background: #f3f8ff; border-left-color: #5f8cff; }
+    .panel .card:nth-of-type(3) { background: #f7f4ff; border-left-color: #8a63ff; }
+    .panel .card:nth-of-type(4) { background: #fff5f0; border-left-color: #ff7a45; }
+    .panel .card:nth-of-type(5) { background: #f4fff6; border-left-color: #4caf6a; }
+    .panel .card:nth-of-type(6) { background: #f0fdff; border-left-color: #20a4bf; }
+    .panel .card:nth-of-type(7) { background: #fff5fb; border-left-color: #cc5ea8; }
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .card-collapse-btn {
+      border: 1px solid #c8c8c8;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -194,6 +221,44 @@
           <div>
             <label class="small">steps（步數，越高越平滑）</label>
             <input id="curveSteps" type="number" min="5" max="101" step="1" value="31" />
+          </div>
+        </div>
+        <div class="row">
+          <label class="small"><input id="curveUse3D" type="checkbox" checked /> 3D 曲線模式（可旋轉）</label>
+        </div>
+        <div class="row">
+          <div>
+            <label class="small">3D X 軸</label>
+            <select id="curveAxisX">
+              <option value="r">r 比例</option>
+              <option value="metric" selected>指標值 y</option>
+              <option value="delta">指標變化 Δy</option>
+              <option value="x">X 除臭</option>
+              <option value="y">Y 吸水</option>
+              <option value="z">Z 抗粉碎</option>
+            </select>
+          </div>
+          <div>
+            <label class="small">3D Y 軸</label>
+            <select id="curveAxisY">
+              <option value="r" selected>r 比例</option>
+              <option value="metric">指標值 y</option>
+              <option value="delta">指標變化 Δy</option>
+              <option value="x">X 除臭</option>
+              <option value="y">Y 吸水</option>
+              <option value="z">Z 抗粉碎</option>
+            </select>
+          </div>
+          <div>
+            <label class="small">3D Z 軸</label>
+            <select id="curveAxisZ">
+              <option value="r">r 比例</option>
+              <option value="metric">指標值 y</option>
+              <option value="delta">指標變化 Δy</option>
+              <option value="x" selected>X 除臭</option>
+              <option value="y">Y 吸水</option>
+              <option value="z">Z 抗粉碎</option>
+            </select>
           </div>
         </div>
         <div class="small">掃描時比例調整規則</div>

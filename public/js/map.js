@@ -419,6 +419,37 @@ function updateContribSlider(rMax, steps, r0) {
   document.getElementById("contribRLabel").textContent = `r=${Number(slider.value).toFixed(4)}`;
 }
 
+function pickCurveAxisSeries(axisKey, out, yMain) {
+  switch (axisKey) {
+    case "r":
+      return out.x || [];
+    case "metric":
+      return yMain || [];
+    case "delta":
+      return out.yDelta || yMain || [];
+    case "x":
+      return out.xyzSeries?.x || [];
+    case "y":
+      return out.xyzSeries?.y || [];
+    case "z":
+      return out.xyzSeries?.z || [];
+    default:
+      return out.x || [];
+  }
+}
+
+function axisLabel(axisKey) {
+  const map = {
+    r: "r 比例",
+    metric: "指標值 y",
+    delta: "指標變化 Δy",
+    x: "X 除臭",
+    y: "Y 吸水",
+    z: "Z 抗粉碎",
+  };
+  return map[axisKey] || axisKey;
+}
+
 async function renderContributions(rValue) {
   const seq = ++contribReqSeq;
   const metric = document.getElementById("curveMetric").value;
@@ -515,72 +546,116 @@ async function renderCurve() {
     }
 
     const yMain = mode === "mix" && showDelta ? out.yDelta || out.y : out.y;
-    const traces = [
-      {
-        x: out.x,
-        y: yMain,
-        type: "scatter",
-        mode: "lines",
-        name: mode === "mix" ? (showDelta ? "Δy 曲線" : "混合曲線 y") : "單材曲線 y",
-        line: { color: "#1e5dff", width: 2 },
-      },
-    ];
+    const use3D = Boolean(document.getElementById("curveUse3D")?.checked);
+    const axisX = document.getElementById("curveAxisX")?.value || "metric";
+    const axisY = document.getElementById("curveAxisY")?.value || "r";
+    const axisZ = document.getElementById("curveAxisZ")?.value || "x";
 
-    if (mode === "mix" && showXYZ && out.xyzSeries?.x?.length) {
-      traces.push(
-        { x: out.x, y: out.xyzSeries.x, type: "scatter", mode: "lines", name: "X 除臭", line: { dash: "dot" } },
-        { x: out.x, y: out.xyzSeries.y, type: "scatter", mode: "lines", name: "Y 吸水", line: { dash: "dash" } },
-        { x: out.x, y: out.xyzSeries.z, type: "scatter", mode: "lines", name: "Z 抗粉碎", line: { dash: "solid" } }
+    if (use3D) {
+      const x3 = pickCurveAxisSeries(axisX, out, yMain);
+      const y3 = pickCurveAxisSeries(axisY, out, yMain);
+      const z3 = pickCurveAxisSeries(axisZ, out, yMain);
+      Plotly.react(
+        "curvePlot",
+        [
+          {
+            type: "scatter3d",
+            mode: "lines+markers",
+            x: x3,
+            y: y3,
+            z: z3,
+            marker: { size: 3, color: "#1e5dff" },
+            line: { width: 4, color: "#1e5dff" },
+            hovertext: (out.x || []).map((r, idx) => {
+              const m = Number(yMain?.[idx] ?? 0).toFixed(2);
+              return `r=${Number(r).toFixed(4)} | y=${m}`;
+            }),
+            hoverinfo: "text",
+            name: "3D 曲線",
+          },
+        ],
+        {
+          margin: { l: 0, r: 0, t: 10, b: 0 },
+          paper_bgcolor: "#ffffff",
+          plot_bgcolor: "#ffffff",
+          scene: {
+            xaxis: { title: axisLabel(axisX) },
+            yaxis: { title: axisLabel(axisY) },
+            zaxis: { title: axisLabel(axisZ) },
+            dragmode: "turntable",
+          },
+        },
+        { responsive: true }
+      );
+      status.textContent = `3D 曲線完成（可拖曳旋轉，規則 ${rule}）`;
+    } else {
+      const traces = [
+        {
+          x: out.x,
+          y: yMain,
+          type: "scatter",
+          mode: "lines",
+          name: mode === "mix" ? (showDelta ? "Δy 曲線" : "混合曲線 y") : "單材曲線 y",
+          line: { color: "#1e5dff", width: 2 },
+        },
+      ];
+
+      if (mode === "mix" && showXYZ && out.xyzSeries?.x?.length) {
+        traces.push(
+          { x: out.x, y: out.xyzSeries.x, type: "scatter", mode: "lines", name: "X 除臭", line: { dash: "dot" } },
+          { x: out.x, y: out.xyzSeries.y, type: "scatter", mode: "lines", name: "Y 吸水", line: { dash: "dash" } },
+          { x: out.x, y: out.xyzSeries.z, type: "scatter", mode: "lines", name: "Z 抗粉碎", line: { dash: "solid" } }
+        );
+      }
+
+      const shapes = [];
+      const annotations = [];
+      if (mode === "mix" && Number.isFinite(out.r0)) {
+        shapes.push({
+          type: "line",
+          x0: out.r0,
+          x1: out.r0,
+          y0: 0,
+          y1: 1,
+          xref: "x",
+          yref: "paper",
+          line: { color: "#ff7a00", width: 1.5, dash: "dash" },
+        });
+        annotations.push({
+          x: out.r0,
+          y: 1,
+          xref: "x",
+          yref: "paper",
+          yanchor: "bottom",
+          text: `baseline r0=${(out.r0 * 100).toFixed(2)}%`,
+          showarrow: false,
+          font: { size: 11, color: "#ff7a00" },
+        });
+      }
+
+      Plotly.react(
+        "curvePlot",
+        traces,
+        {
+          margin: { l: 45, r: 10, t: 40, b: 45 },
+          paper_bgcolor: "#ffffff",
+          plot_bgcolor: "#ffffff",
+          xaxis: { title: "ratio r" },
+          yaxis: { title: showDelta ? "Δscore" : "score (0~100)" },
+          legend: { orientation: "h" },
+          shapes,
+          annotations,
+        },
+        { responsive: true }
       );
     }
-
-    const shapes = [];
-    const annotations = [];
-    if (mode === "mix" && Number.isFinite(out.r0)) {
-      shapes.push({
-        type: "line",
-        x0: out.r0,
-        x1: out.r0,
-        y0: 0,
-        y1: 1,
-        xref: "x",
-        yref: "paper",
-        line: { color: "#ff7a00", width: 1.5, dash: "dash" },
-      });
-      annotations.push({
-        x: out.r0,
-        y: 1,
-        xref: "x",
-        yref: "paper",
-        yanchor: "bottom",
-        text: `baseline r0=${(out.r0 * 100).toFixed(2)}%`,
-        showarrow: false,
-        font: { size: 11, color: "#ff7a00" },
-      });
-    }
-
-    Plotly.react(
-      "curvePlot",
-      traces,
-      {
-        margin: { l: 45, r: 10, t: 40, b: 45 },
-        paper_bgcolor: "#ffffff",
-        plot_bgcolor: "#ffffff",
-        xaxis: { title: "ratio r" },
-        yaxis: { title: showDelta ? "Δscore" : "score (0~100)" },
-        legend: { orientation: "h" },
-        shapes,
-        annotations,
-      },
-      { responsive: true }
-    );
 
     if (mode === "mix") {
       updateContribSlider(rMax, steps, out.r0 ?? 0);
       await renderContributions(Number(document.getElementById("contribR").value));
-      status.textContent = `曲線完成（規則 ${rule}）`;
+      if (!use3D) status.textContent = `曲線完成（規則 ${rule}）`;
     } else {
-      status.textContent = "單一材料曲線完成";
+      if (!use3D) status.textContent = "單一材料曲線完成";
       Plotly.react(
         "contribPlot",
         [],
@@ -593,10 +668,48 @@ async function renderCurve() {
   }
 }
 
+function setupCardCollapsible() {
+  const cards = document.querySelectorAll(".panel .card");
+  cards.forEach((card) => {
+    const title = card.querySelector(":scope > .small");
+    if (!title) return;
+    if (card.dataset.collapsibleBound === "1") return;
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "card-title-row";
+    title.parentNode.insertBefore(titleRow, title);
+    titleRow.appendChild(title);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "card-collapse-btn";
+    btn.textContent = "收起";
+    titleRow.appendChild(btn);
+
+    const bodyNodes = [...card.children].filter((el) => el !== titleRow);
+    let collapsed = false;
+    btn.addEventListener("click", () => {
+      collapsed = !collapsed;
+      bodyNodes.forEach((node) => {
+        node.style.display = collapsed ? "none" : "";
+      });
+      btn.textContent = collapsed ? "展開" : "收起";
+    });
+    card.dataset.collapsibleBound = "1";
+  });
+}
+
 function renderMapOptimizeResults(candidates = []) {
   const el = document.getElementById("mapOptimizeResults");
   if (!candidates.length) {
-    el.innerHTML = `<div class="small">無候選結果</div>`;
+    el.innerHTML = `
+      <div class="small">暫時無候選結果。</div>
+      <div class="small">建議你這樣調：</div>
+      <div class="small">1) 把「最大材料數」先降到 4~6</div>
+      <div class="small">2) 主材比例範圍改寬一點（例如 30~85，step=5）</div>
+      <div class="small">3) 確認目標 XYZ 不要太極端（先用已存在樣品附近）</div>
+      <div class="small">4) 到後台檢查材料 min/max 與配方限制是否太嚴</div>
+    `;
     return;
   }
   const idToName = new Map(allMaterials.map((m) => [Number(m.id), m.name]));
@@ -618,18 +731,27 @@ function renderMapSwapResults(out) {
     return;
   }
   const suggest = (out.suggestions || [])
-    .map(
-      (s, idx) =>
-        `<div class="small">${idx + 1}. ${s.material_name || s.material_id}：ΔX ${s.expectedDeltaXYZPer1Percent?.x}, ΔY ${s.expectedDeltaXYZPer1Percent?.y}, ΔZ ${s.expectedDeltaXYZPer1Percent?.z}</div>`
-    )
+    .map((s, idx) => {
+      const dx = Number(s.expectedDeltaXYZPer1Percent?.x || 0);
+      const dy = Number(s.expectedDeltaXYZPer1Percent?.y || 0);
+      const dz = Number(s.expectedDeltaXYZPer1Percent?.z || 0);
+      const zhName = s.material_name || s.material_id;
+      const dzHint = dz < 0 ? "（抗粉碎可能下降）" : dz > 0 ? "（抗粉碎可提升）" : "（抗粉碎影響小）";
+      return `<div class="small">${idx + 1}. 建議補 ${zhName} +1%：除臭 ${dx >= 0 ? "+" : ""}${dx}、吸水 ${dy >= 0 ? "+" : ""}${dy}、抗粉碎 ${dz >= 0 ? "+" : ""}${dz} ${dzHint}</div>`;
+    })
     .join("");
   const repaired = (out.repairedCandidates || [])
     .map((c, idx) => `<div class="small">補救 #${idx + 1} dist=${c.distance} XYZ(${c.xyz?.x}, ${c.xyz?.y}, ${c.xyz?.z})</div>`)
     .join("");
+  const deltaX = Number(out.afterSwap?.deltaXYZ?.x || 0);
+  const deltaY = Number(out.afterSwap?.deltaXYZ?.y || 0);
+  const deltaZ = Number(out.afterSwap?.deltaXYZ?.z || 0);
+  const noChange = Math.abs(deltaX) < 0.01 && Math.abs(deltaY) < 0.01 && Math.abs(deltaZ) < 0.01;
   resultEl.innerHTML = `
     <div class="small">替換前 XYZ：${out.before?.xyz?.x}/${out.before?.xyz?.y}/${out.before?.xyz?.z}</div>
     <div class="small">替換後 XYZ：${out.afterSwap?.xyz?.x}/${out.afterSwap?.xyz?.y}/${out.afterSwap?.xyz?.z}</div>
     <div class="small">下降量 ΔXYZ：${out.afterSwap?.deltaXYZ?.x}/${out.afterSwap?.deltaXYZ?.y}/${out.afterSwap?.deltaXYZ?.z}</div>
+    ${noChange ? '<div class="small">解讀：在目前公式下，A 換成 B 幾乎沒有影響（兩者效果接近）。</div>' : ""}
     <hr />
     <div class="small">補強建議</div>
     ${suggest || '<div class="small">無</div>'}
@@ -830,6 +952,7 @@ async function main() {
   fillMaterialOptions([]);
   await refreshMapData();
   toggleCurveModeRows();
+  setupCardCollapsible();
 
   document.getElementById("btnResetView").addEventListener("click", resetView);
   document.getElementById("btnExportCandidates").addEventListener("click", exportCandidatesCsv);

@@ -76,12 +76,40 @@ export async function optimizeRecipe({
 
   const secondaryPool = materials.filter((m) => m.id !== Number(mainMaterialId));
   const candidates = [];
+  const seen = new Set();
   const minMain = Number(mainRatioRange.min ?? 50);
   const maxMain = Number(mainRatioRange.max ?? 80);
   const step = Math.max(1, Number(mainRatioRange.step ?? 5));
 
+  function candidateKey(bomItems) {
+    return bomItems
+      .map((b) => `${Number(b.material_id)}:${Number(b.ratioPercent).toFixed(2)}`)
+      .sort()
+      .join("|");
+  }
+
+  async function tryPushCandidate(mainRatio, picked, amountMap) {
+    if (!applyBounds([main, ...picked], amountMap)) return;
+    const bomItems = [{ material_id: main.id, ratioPercent: Number(mainRatio.toFixed(2)) }].concat(
+      picked.map((m) => ({ material_id: m.id, ratioPercent: Number((amountMap.get(m.id) || 0).toFixed(2)) }))
+    );
+    const key = candidateKey(bomItems);
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const out = await evaluateBomItems(bomItems, p);
+    const distance = Number(distL2(out.xyz, targetXYZ).toFixed(4));
+    candidates.push({
+      bomItems,
+      xyz: out.xyz,
+      metrics: out.metrics,
+      distance,
+      notes: `主材比例 ${mainRatio.toFixed(1)}%，次材 ${picked.length} 種`,
+    });
+  }
+
   for (let mainRatio = minMain; mainRatio <= maxMain + 1e-6; mainRatio += step) {
-    const tries = 700;
+    const tries = Math.max(180, Math.min(450, 120 + maxMaterials * 40));
     for (let t = 0; t < tries; t += 1) {
       const secCount = randInt(1, Math.max(1, maxMaterials - 1));
       const fixed = secondaryPool.filter((m) => includeIds.includes(m.id));
@@ -93,22 +121,29 @@ export async function optimizeRecipe({
       const split = buildRandomSplit(remain, picked.length);
       const amountMap = new Map([[main.id, mainRatio]]);
       picked.forEach((m, idx) => amountMap.set(m.id, split[idx]));
-      if (!applyBounds([main, ...picked], amountMap)) continue;
-
-      const bomItems = [{ material_id: main.id, ratioPercent: mainRatio }].concat(
-        picked.map((m) => ({ material_id: m.id, ratioPercent: Number((amountMap.get(m.id) || 0).toFixed(2)) }))
-      );
-
-      const out = await evaluateBomItems(bomItems, p);
-      const distance = Number(distL2(out.xyz, targetXYZ).toFixed(4));
-      candidates.push({
-        bomItems,
-        xyz: out.xyz,
-        metrics: out.metrics,
-        distance,
-        notes: `主材比例 ${mainRatio.toFixed(1)}%，次材 ${picked.length} 種`,
-      });
+      await tryPushCandidate(mainRatio, picked, amountMap);
     }
+  }
+
+  // Deterministic fallback: if random sampling misses all valid combos, force main+single-secondary scan.
+  if (!candidates.length) {
+    for (let mainRatio = minMain; mainRatio <= maxMain + 1e-6; mainRatio += step) {
+      const remain = Math.max(0, 100 - mainRatio);
+      if (remain <= 0) continue;
+      for (const sec of secondaryPool) {
+        const amountMap = new Map([
+          [main.id, mainRatio],
+          [sec.id, remain],
+        ]);
+        await tryPushCandidate(mainRatio, [sec], amountMap);
+      }
+    }
+  }
+
+  if (!candidates.length) {
+    throw new Error(
+      `無有效候選。請調整主材比例範圍（目前 ${minMain}-${maxMain}%），或到後台檢查材料 min/max 與 recipe_constraints 限制。`
+    );
   }
 
   candidates.sort((a, b) => a.distance - b.distance);
