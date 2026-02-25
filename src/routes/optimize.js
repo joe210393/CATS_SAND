@@ -15,20 +15,27 @@ router.post(
     if (!b.mainMaterialId) return res.status(400).json({ ok: false, error: "mainMaterialId required" });
     if (!b.targetXYZ) return res.status(400).json({ ok: false, error: "targetXYZ required" });
 
-    const candidates = await optimizeRecipe({
-      mainMaterialId: Number(b.mainMaterialId),
-      mainRatioRange: b.mainRatioRange || { min: 50, max: 80, step: 5 },
-      targetXYZ: {
-        x: Number(b.targetXYZ.x || 0),
-        y: Number(b.targetXYZ.y || 0),
-        z: Number(b.targetXYZ.z || 0),
-      },
-      constraints: b.constraints || {},
-      p: Number(b.p ?? 0.5),
-      topN: Number(b.topN || 10),
-    });
-
-    res.json({ ok: true, data: { candidates } });
+    try {
+      const candidates = await optimizeRecipe({
+        mainMaterialId: Number(b.mainMaterialId),
+        mainRatioRange: b.mainRatioRange || { min: 50, max: 80, step: 5 },
+        targetXYZ: {
+          x: Number(b.targetXYZ.x || 0),
+          y: Number(b.targetXYZ.y || 0),
+          z: Number(b.targetXYZ.z || 0),
+        },
+        constraints: b.constraints || {},
+        p: Number(b.p ?? 0.5),
+        topN: Number(b.topN || 10),
+      });
+      return res.json({ ok: true, data: { candidates } });
+    } catch (e) {
+      const msg = e?.message || "optimize failed";
+      if (msg.includes("無有效候選")) {
+        return res.json({ ok: true, data: { candidates: [], message: msg } });
+      }
+      throw e;
+    }
   })
 );
 

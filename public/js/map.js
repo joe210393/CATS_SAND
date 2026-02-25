@@ -1032,7 +1032,8 @@ async function main() {
         p: Number(document.getElementById("mapP").value || 0.5),
         topN: Number(document.getElementById("mapTopN").value || 5),
       });
-      status.textContent = `完成：${(out.candidates || []).length} 筆`;
+      const count = (out.candidates || []).length;
+      status.textContent = out.message ? `完成：${count} 筆（${out.message}）` : `完成：${count} 筆`;
       renderMapOptimizeResults(out.candidates || []);
       optimizeOverlayPoints = (out.candidates || []).map((c) => c.xyz).filter(Boolean);
       await renderMap(points);
